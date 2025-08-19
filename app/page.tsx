@@ -1,103 +1,457 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Search, Loader2, FileText, User, MessageSquare, Sparkles, Zap, Brain, Clock, Target } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
+
+// Types
+interface SearchResult {
+  id: string | number;
+  score: number;
+  interview_id?: string;
+  participant_id?: string;
+  interview_title?: string;
+  paragraph_title?: string;
+  paragraph_text?: string;
+  vector_score?: number;
+  keyword_score?: number;
+}
+
+type SearchType = 'hybrid' | 'vector' | 'keyword';
+
+// Search service abstraction
+class SearchService {
+  private static async makeRequest(endpoint: string, data: any) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Search failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  static async search(params: {
+    query: string;
+    searchType: SearchType;
+    topK: number;
+    alpha: number;
+    filters?: Record<string, any>;
+  }) {
+    return this.makeRequest('/api/search', params);
+  }
+}
+
+const InterviewSearchFrontend: React.FC = () => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchType, setSearchType] = useState<SearchType>('hybrid');
+  const [alpha, setAlpha] = useState([0.5]);
+  const [topK, setTopK] = useState('10');
+  const [error, setError] = useState<string | null>(null);
+  const [searchTime, setSearchTime] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const performSearch = useCallback(async () => {
+    if (!query.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    const startTime = Date.now();
+
+    try {
+      const data = await SearchService.search({
+        query: query.trim(),
+        searchType,
+        topK: parseInt(topK),
+        alpha: alpha[0],
+        filters: {}
+      });
+
+      setResults(data.results || []);
+      setSearchTime(Date.now() - startTime);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setResults([]);
+      setSearchTime(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [query, searchType, topK, alpha]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      performSearch();
+    }
+  };
+
+  const getSearchTypeConfig = (type: SearchType) => {
+    const configs = {
+      vector: { icon: Brain, label: 'Semantic', color: 'text-blue-600', bg: 'bg-blue-50' },
+      keyword: { icon: Zap, label: 'Keyword', color: 'text-yellow-600', bg: 'bg-yellow-50' },
+      hybrid: { icon: Sparkles, label: 'Hybrid', color: 'text-purple-600', bg: 'bg-purple-50' }
+    };
+    return configs[type];
+  };
+
+  const formatScore = (score: number) => (score).toFixed(1);
+
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim() || searchType === 'vector') return text;
+
+    const words = query.trim().split(/\s+/);
+    let highlighted = text;
+
+    words.forEach(word => {
+      const regex = new RegExp(`(${word})`, 'gi');
+      highlighted = highlighted.replace(regex, '<mark class="bg-yellow-200/60 px-0.5 rounded-sm">$1</mark>');
+    });
+
+    return highlighted;
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <div className="max-w-6xl mx-auto px-4 py-12">
+        {/* Elegant Header */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl mb-6">
+            <Search className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-5xl font-bold bg-gradient-to-br from-gray-900 via-gray-800 to-gray-600 bg-clip-text text-transparent mb-4">
+            Interview Intelligence
+          </h1>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            Discover insights across interview transcripts with AI-powered semantic search,
+            keyword matching, and intelligent hybrid algorithms
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Sophisticated Search Interface */}
+        <Card className="backdrop-blur-sm bg-white/80 border-white/20 shadow-2xl mb-8">
+          <CardContent className="p-8">
+            {/* Main Search Input */}
+            <div className="relative mb-8">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="What insights are you looking for?"
+                className="pl-10 pr-4 py-6 text-lg"
+                disabled={loading}
+              />
+              {loading && (
+                <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-blue-500 animate-spin" />
+              )}
+            </div>
+
+            {/* Advanced Controls */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+              {/* Search Method Selection */}
+              <div className="lg:col-span-5">
+                <Label className="text-sm font-semibold text-gray-700 mb-3 block">
+                  Search Method
+                </Label>
+                <RadioGroup
+                  value={searchType}
+                  onValueChange={(value) => setSearchType(value as SearchType)} // ✅ cast
+                  className="grid grid-cols-3 gap-3"
+                >
+                  {(["vector", "keyword", "hybrid"] as const).map((type) => {
+                    const config = getSearchTypeConfig(type);
+                    const Icon = config.icon;
+                    return (
+                      <div
+                        key={type}
+                        className={`relative rounded-lg border-2 p-3 cursor-pointer transition-all ${searchType === type
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50 hover:bg-accent"
+                          }`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value={type} id={type} />
+                          <Label
+                            htmlFor={type}
+                            className="flex items-center space-x-2 cursor-pointer"
+                          >
+                            <Icon
+                              className={`w-4 h-4 ${searchType === type ? "text-primary" : "text-muted-foreground"
+                                }`}
+                            />
+                            <span className="text-sm font-medium">{config.label}</span>
+                          </Label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
+
+              </div>
+
+              {/* Results Count */}
+              <div className="lg:col-span-2">
+                <Label className="text-sm font-semibold text-gray-700 mb-3 block">
+                  Results
+                </Label>
+                <Select value={topK} onValueChange={setTopK}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select results" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 results</SelectItem>
+                    <SelectItem value="10">10 results</SelectItem>
+                    <SelectItem value="20">20 results</SelectItem>
+                    <SelectItem value="50">50 results</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Hybrid Balance Control */}
+              <div className={`lg:col-span-3 ${searchType === 'hybrid' ? 'opacity-100' : 'opacity-50'}`}>
+                <Label className="text-sm font-semibold text-gray-700 mb-3 block">
+                  Search Balance
+                </Label>
+                <div className="space-y-3">
+                  <Slider
+                    value={alpha}
+                    onValueChange={setAlpha}
+                    max={1}
+                    min={0}
+                    step={0.1}
+                    disabled={searchType !== 'hybrid'}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Keyword</span>
+                    <span className="font-medium">{Math.round(alpha[0] * 100)}% Semantic</span>
+                    <span>Semantic</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Action */}
+              <div className="lg:col-span-2">
+                <Button
+                  onClick={performSearch}
+                  disabled={loading || !query.trim()}
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Searching
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Search
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Search Tips */}
+            <div className="mt-6 p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <Target className="w-4 h-4" />
+                <span className="font-medium">Pro tip:</span>
+                <span>Use semantic search for concepts, keyword for exact terms, or hybrid for best of both</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Error Display */}
+        {error && (
+          <Card className="border-destructive/50 bg-destructive/5 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2 text-destructive">
+                <div className="w-2 h-2 bg-destructive rounded-full"></div>
+                <span className="font-medium">Search Error:</span>
+                <span>{error}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Results Header */}
+        {results.length > 0 && (
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-2xl font-bold">
+                {results.length} Results Found
+              </h2>
+              {searchTime && (
+                <Badge variant="secondary" className="flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>{searchTime}ms</span>
+                </Badge>
+              )}
+            </div>
+            <Badge variant="outline" className="flex items-center space-x-1">
+              {React.createElement(getSearchTypeConfig(searchType).icon, { className: "w-3 h-3" })}
+              <span>{getSearchTypeConfig(searchType).label} Search</span>
+            </Badge>
+          </div>
+        )}
+
+        {/* Elegant Results Display */}
+        <div className="space-y-4">
+          {results.map((result, index) => (
+            <Card key={result.id} className="backdrop-blur-sm bg-white/90 border-white/20 hover:shadow-xl transition-all duration-300">
+              <CardContent className="p-6">
+                {/* Result Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <FileText className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg">
+                          {result.interview_title || 'Untitled Interview'}
+                        </h3>
+                        {result.participant_id && (
+                          <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
+                            <User className="w-3 h-3" />
+                            <span>Participant {result.participant_id}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {result.paragraph_title && (
+                      <Badge variant="outline" className="mb-3">
+                        {result.paragraph_title}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Sophisticated Score Display */}
+                  <div className="text-right">
+                    <div className="relative">
+                      <div className="text-2xl font-bold bg-gradient-to-br from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                        {formatScore(result.score)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">relevance</div>
+                    </div>
+
+                    {searchType === 'hybrid' && result.vector_score !== undefined && result.keyword_score !== undefined && (
+                      <div className="mt-3 space-y-1 text-xs">
+                        <div className="flex items-center justify-between space-x-2">
+                          <span className="text-muted-foreground">Semantic:</span>
+                          <span className="font-medium text-blue-600">{formatScore(result.vector_score)}</span>
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                          <span className="text-muted-foreground">Keyword:</span>
+                          <span className="font-medium text-purple-600">{formatScore(result.keyword_score)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Content with Elegant Typography */}
+                {result.paragraph_text && (
+                  <div className="prose prose-gray max-w-none">
+                    <div className="flex items-start space-x-3">
+                      <div className="p-1.5 bg-muted rounded-lg mt-1">
+                        <MessageSquare className="w-3 h-3 text-muted-foreground" />
+                      </div>
+                      <p
+                        className="text-foreground leading-relaxed text-base"
+                        dangerouslySetInnerHTML={{
+                          __html: highlightText(result.paragraph_text, query)
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadata Footer */}
+                <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                  <div className="flex items-center space-x-3 text-xs text-muted-foreground">
+                    {result.interview_id && (
+                      <Badge variant="secondary">
+                        ID: {result.interview_id}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Result #{index + 1}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Elegant Empty States */}
+        {!loading && results.length === 0 && query && !error && (
+          <Card className="backdrop-blur-sm bg-white/80 border-white/20">
+            <CardContent className="text-center py-16">
+              <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Search className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-bold mb-2">No Results Found</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                We couldn't find any interviews matching your search. Try adjusting your query or changing the search method.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Welcome State */}
+        {!query && results.length === 0 && (
+          <Card className="backdrop-blur-sm bg-white/80 border-white/20">
+            <CardContent className="text-center py-16">
+              <div className="flex justify-center space-x-4 mb-8">
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Brain className="w-6 h-6 text-blue-600" />
+                </div>
+                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-purple-600" />
+                </div>
+                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-yellow-600" />
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold mb-4">
+                Ready to Explore Interview Insights
+              </h3>
+              <p className="text-muted-foreground max-w-lg mx-auto leading-relaxed">
+                Enter your search query above to discover relevant insights from interview transcripts
+                using our advanced AI-powered search capabilities.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
-}
+};
+
+export default InterviewSearchFrontend;
