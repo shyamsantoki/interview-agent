@@ -57,7 +57,8 @@ class SearchService {
 
 const InterviewSearchFrontend: React.FC = () => {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [chunks, setChunks] = useState<SearchResult[]>([]);
+  const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchType, setSearchType] = useState<SearchType>('hybrid');
   const [alpha, setAlpha] = useState([0.5]);
@@ -86,11 +87,13 @@ const InterviewSearchFrontend: React.FC = () => {
         filters: {}
       });
 
-      setResults(data.results || []);
+      setChunks(data.chunks || []);
+      setInterviews(data.interviews || []);
       setSearchTime(Date.now() - startTime);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setResults([]);
+      setChunks([]);
+      setInterviews([]);
       setSearchTime(null);
     } finally {
       setLoading(false);
@@ -297,30 +300,52 @@ const InterviewSearchFrontend: React.FC = () => {
           </Card>
         )}
 
-        {/* Results Header */}
-        {results.length > 0 && (
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-2xl font-bold">
-                {results.length} Results Found
-              </h2>
-              {searchTime && (
-                <Badge variant="secondary" className="flex items-center space-x-1">
-                  <Clock className="w-3 h-3" />
-                  <span>{searchTime}ms</span>
-                </Badge>
-              )}
+        {/* Interviews Section */}
+        {interviews.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold mb-4">Interviews ({interviews.length})</h2>
+            <div className="space-y-4">
+              {interviews.map(iv => (
+                <Card key={iv.id} className="border-blue-200">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">Interview ID: {iv.id}</div>
+                      {iv.participant_id && <Badge variant="outline">Participant {iv.participant_id}</Badge>}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <details className="text-sm space-y-2">
+                      <summary className="cursor-pointer text-blue-600">Transcript</summary>
+                      <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{iv.editedTranscript}
+                      </pre>
+                    </details>
+                    {iv.aiGeneratedDocument && (
+                      <details className="text-sm mt-4 space-y-2">
+                        <summary className="cursor-pointer text-purple-600">AI Generated Document</summary>
+                        <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{iv.aiGeneratedDocument}
+                        </pre>
+                      </details>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            <Badge variant="outline" className="flex items-center space-x-1">
-              {React.createElement(getSearchTypeConfig(searchType).icon, { className: "w-3 h-3" })}
-              <span>{getSearchTypeConfig(searchType).label} Search</span>
-            </Badge>
+          </div>
+        )}
+
+
+        {/* Results Header */}
+        {chunks.length > 0 && (
+          <div className="flex items-center justify-between mb-6 mt-12">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-2xl font-bold mb-4">Chunks ({chunks.length})</h2>
+            </div>
           </div>
         )}
 
         {/* Elegant Results Display */}
         <div className="space-y-4">
-          {results.map((result, index) => (
+          {chunks.map((result, index) => (
             <Card key={result.id} className="backdrop-blur-sm bg-white/90 border-white/20 hover:shadow-xl transition-all duration-300">
               <CardContent className="p-6">
                 {/* Result Header */}
@@ -410,7 +435,7 @@ const InterviewSearchFrontend: React.FC = () => {
         </div>
 
         {/* Elegant Empty States */}
-        {!loading && results.length === 0 && query && !error && (
+        {!loading && chunks.length === 0 && query && !error && (
           <Card className="backdrop-blur-sm bg-white/80 border-white/20">
             <CardContent className="text-center py-16">
               <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -425,7 +450,7 @@ const InterviewSearchFrontend: React.FC = () => {
         )}
 
         {/* Welcome State */}
-        {!query && results.length === 0 && (
+        {!query && chunks.length === 0 && (
           <Card className="backdrop-blur-sm bg-white/80 border-white/20">
             <CardContent className="text-center py-16">
               <div className="flex justify-center space-x-4 mb-8">
