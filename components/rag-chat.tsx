@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -67,6 +69,145 @@ interface StreamEvent {
   data: string | StreamEventData;
 }
 
+// Markdown Component with Custom Styling
+const MarkdownContent: React.FC<{ content: string; isStreaming?: boolean }> = ({
+  content,
+  isStreaming = false
+}) => {
+  return (
+    <div className="markdown-content">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Headers
+          h1: ({ children }) => (
+            <h1 className="text-xl font-bold mt-6 mb-4 text-slate-900 first:mt-0">
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-lg font-bold mt-5 mb-3 text-slate-800 first:mt-0">
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-base font-semibold mt-4 mb-2 text-slate-700 first:mt-0">
+              {children}
+            </h3>
+          ),
+          h4: ({ children }) => (
+            <h4 className="text-sm font-semibold mt-3 mb-2 text-slate-700 first:mt-0">
+              {children}
+            </h4>
+          ),
+
+          // Paragraphs
+          p: ({ children }) => (
+            <p className="mb-3 text-slate-800 leading-relaxed last:mb-0">
+              {children}
+            </p>
+          ),
+
+          // Lists
+          ul: ({ children }) => (
+            <ul className="mb-3 space-y-1 last:mb-0">
+              {children}
+            </ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="mb-3 space-y-1 list-decimal list-inside last:mb-0">
+              {children}
+            </ol>
+          ),
+          li: ({ children }) => (
+            <li className="text-slate-800 leading-relaxed ml-4 relative">
+              <span className="absolute -left-4 text-indigo-500">•</span>
+              {children}
+            </li>
+          ),
+
+          // Emphasis
+          strong: ({ children }) => (
+            <strong className="font-semibold text-slate-900">
+              {children}
+            </strong>
+          ),
+          em: ({ children }) => (
+            <em className="italic text-slate-700">
+              {children}
+            </em>
+          ),
+
+          // Blockquotes
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-3 border-indigo-300 pl-4 py-2 my-3 bg-indigo-50/50 italic text-slate-700">
+              {children}
+            </blockquote>
+          ),
+
+          // Tables
+          table: ({ children }) => (
+            <div className="overflow-x-auto my-3">
+              <table className="min-w-full border border-slate-200 rounded-lg">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-slate-50">
+              {children}
+            </thead>
+          ),
+          tbody: ({ children }) => (
+            <tbody className="bg-white">
+              {children}
+            </tbody>
+          ),
+          tr: ({ children }) => (
+            <tr className="border-b border-slate-200 last:border-b-0">
+              {children}
+            </tr>
+          ),
+          th: ({ children }) => (
+            <th className="px-3 py-2 text-left text-sm font-semibold text-slate-900 border-r border-slate-200 last:border-r-0">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-3 py-2 text-sm text-slate-800 border-r border-slate-200 last:border-r-0">
+              {children}
+            </td>
+          ),
+
+          // Links
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              className="text-indigo-600 hover:text-indigo-800 underline underline-offset-2 hover:underline-offset-4 transition-all duration-200"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          ),
+
+          // Horizontal Rule
+          hr: () => (
+            <hr className="my-4 border-t border-slate-200" />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+
+      {/* Streaming cursor */}
+      {isStreaming && (
+        <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-1 animate-pulse" />
+      )}
+    </div>
+  );
+};
+
 const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -129,7 +270,7 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
             <div className="mb-3">
               <div className="text-xs font-medium text-slate-600 mb-1">Search Query</div>
               <div className="text-sm text-slate-800 bg-slate-50/80 p-2 rounded-lg">
-                "{toolCall.input.query}"
+                `{toolCall.input.query}`
                 {toolCall.input.searchType && (
                   <div className="text-xs text-slate-600 mt-1">
                     Search type: {toolCall.input.searchType}
@@ -403,7 +544,7 @@ export const RAGChat: React.FC = () => {
                   Welcome to Interview Assistant
                 </h2>
                 <p className="text-slate-600 mb-8 max-w-md">
-                  Ask me anything about your interview data. I'll search through conversations and provide detailed insights.
+                  Ask me anything about your interview data. I will search through conversations and provide detailed insights.
                 </p>
 
                 <div className="grid gap-3 w-full max-w-lg">
@@ -450,9 +591,15 @@ export const RAGChat: React.FC = () => {
                       : 'bg-white border border-slate-200/60'
                       } rounded-2xl px-5 py-4 shadow-sm`}
                   >
-                    <div className={`text-sm leading-relaxed ${message.role === 'user' ? 'text-white' : 'text-slate-800'}`}>
-                      {message.content}
-                    </div>
+                    {message.role === 'user' ? (
+                      <div className="text-sm leading-relaxed text-white">
+                        {message.content}
+                      </div>
+                    ) : (
+                      <div className="text-sm leading-relaxed">
+                        <MarkdownContent content={message.content} />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -485,9 +632,8 @@ export const RAGChat: React.FC = () => {
                     </div>
                   </div>
                   <div className="max-w-3xl bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
-                    <div className="text-sm leading-relaxed text-slate-800">
-                      {streamingMessage}
-                      <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-1 animate-pulse" />
+                    <div className="text-sm leading-relaxed">
+                      <MarkdownContent content={streamingMessage} isStreaming={true} />
                     </div>
                   </div>
                 </div>
