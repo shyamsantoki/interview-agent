@@ -24,14 +24,12 @@ interface SearchResult {
 }
 
 interface ToolCallResult {
-  results: SearchResult[];
-  summary?: {
-    query: string;
-    searchType: string;
-    resultsCount: number;
-    hasError: boolean;
-  };
+  query?: string;
+  searchType?: string;
+  resultsCount?: number;
+  results?: SearchResult[];
   error?: string;
+  details?: string;
 }
 
 interface ToolCall {
@@ -96,7 +94,11 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
       case 'executing':
         return 'Searching...';
       case 'completed':
-        return toolCall.summary ? `${toolCall.summary.resultsCount} results found` : 'Complete';
+        return toolCall.summary ?
+          `${toolCall.summary.resultsCount} results found` :
+          toolCall.result?.resultsCount ?
+            `${toolCall.result.resultsCount} results found` :
+            'Complete';
       case 'error':
         return 'Failed';
       default:
@@ -127,7 +129,13 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
             <div className="mb-3">
               <div className="text-xs font-medium text-slate-600 mb-1">Search Query</div>
               <div className="text-sm text-slate-800 bg-slate-50/80 p-2 rounded-lg">
-                `{toolCall.input.query}`
+                "{toolCall.input.query}"
+                {toolCall.input.searchType && (
+                  <div className="text-xs text-slate-600 mt-1">
+                    Search type: {toolCall.input.searchType}
+                    {toolCall.input.topK && ` • Top ${toolCall.input.topK} results`}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -136,13 +144,13 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
             <div>
               <div className="text-xs font-medium text-slate-600 mb-2">Top Results</div>
               <div className="space-y-2 max-h-32 overflow-y-auto">
-                {toolCall.result.results.slice(0, 3).map((result, idx) => (
+                {toolCall.result.results.map((result, idx) => (
                   <div key={idx} className="text-xs p-2 bg-slate-50/60 rounded-lg border border-slate-100">
                     <div className="font-medium text-slate-800 mb-1">
                       {result.interview_title || `Interview ${result.interview_id}`}
                     </div>
                     <div className="text-slate-600 line-clamp-2">
-                      {result.paragraph_text?.substring(0, 80)}...
+                      {result.paragraph_text}
                     </div>
                     <div className="text-slate-500 mt-1 flex items-center gap-2">
                       <span>Score: {result.score?.toFixed(2)}</span>
@@ -194,18 +202,140 @@ export const RAGChat: React.FC = () => {
     setCurrentToolCalls({});
     setCompletedToolCalls([]);
 
-    // Simulate API call with mock data
-    setTimeout(() => {
-      const mockResponse = `Based on the interview data, I can provide insights about participant experiences. The search revealed several key themes including technology adoption challenges, user interface preferences, and workflow optimization strategies. Participants consistently mentioned the importance of intuitive design and seamless integration with existing systems.`;
+    try {
+      const response = await fetch('/api/rag', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: updatedMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
+        }),
+      });
 
-      setStreamingMessage(mockResponse);
-      setIsLoading(false);
+      if (!response.ok) {
+        throw new Error(`RAG request failed: ${response.statusText}`);
+      }
 
-      setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'assistant', content: mockResponse }]);
+      if (!response.body) {
+        throw new Error('No response body available');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantMessage = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const eventData = line.slice(6);
+            if (eventData === '[DONE]') {
+              continue;
+            }
+
+            try {
+              const event: StreamEvent = JSON.parse(eventData);
+              console.log('Received SSE event:', event);
+
+              switch (event.type) {
+                case 'text':
+                  assistantMessage += event.data;
+                  setStreamingMessage(assistantMessage);
+                  break;
+
+                case 'tool_call':
+                  const toolCallData = event.data as StreamEventData;
+                  setCurrentToolCalls(prev => ({
+                    ...prev,
+                    [toolCallData.id]: {
+                      id: toolCallData.id,
+                      name: toolCallData.name,
+                      status: toolCallData.status,
+                      input: toolCallData.input || prev[toolCallData.id]?.input,
+                      result: prev[toolCallData.id]?.result,
+                      summary: prev[toolCallData.id]?.summary,
+                      error: prev[toolCallData.id]?.error
+                    }
+                  }));
+                  break;
+
+                case 'tool_result':
+                  const toolResultData = event.data as StreamEventData;
+                  setCurrentToolCalls(prev => ({
+                    ...prev,
+                    [toolResultData.id]: {
+                      ...prev[toolResultData.id],
+                      status: 'completed',
+                      result: toolResultData.result,
+                      summary: toolResultData.summary
+                    }
+                  }));
+
+                  // Move to completed tools after a delay
+                  setTimeout(() => {
+                    setCurrentToolCalls(prev => {
+                      const { [toolResultData.id]: completed, ...remaining } = prev;
+                      if (completed) {
+                        setCompletedToolCalls(prevCompleted => [...prevCompleted, completed]);
+                      }
+                      return remaining;
+                    });
+                  }, 2000);
+                  break;
+
+                case 'error':
+                  const errorData = event.data as StreamEventData;
+                  if (errorData.id) {
+                    setCurrentToolCalls(prev => ({
+                      ...prev,
+                      [errorData.id]: {
+                        ...prev[errorData.id],
+                        status: 'error',
+                        error: errorData.message
+                      }
+                    }));
+                  } else {
+                    assistantMessage += `\n\n[Error: ${errorData.message}]`;
+                    setStreamingMessage(assistantMessage);
+                  }
+                  break;
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', eventData, e);
+            }
+          }
+        }
+      }
+
+      // Add the complete assistant message to the conversation
+      if (assistantMessage) {
+        const assistantMsg: Message = { role: 'assistant', content: assistantMessage };
+        setMessages(prev => [...prev, assistantMsg]);
         setStreamingMessage('');
-      }, 1000);
-    }, 2000);
+      }
+
+    } catch (error) {
+      console.error('RAG error:', error);
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -273,7 +403,7 @@ export const RAGChat: React.FC = () => {
                   Welcome to Interview Assistant
                 </h2>
                 <p className="text-slate-600 mb-8 max-w-md">
-                  Ask me anything about your interview data. I will search through conversations and provide detailed insights.
+                  Ask me anything about your interview data. I'll search through conversations and provide detailed insights.
                 </p>
 
                 <div className="grid gap-3 w-full max-w-lg">

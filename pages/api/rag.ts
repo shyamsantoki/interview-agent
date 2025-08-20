@@ -63,6 +63,15 @@ function writeStreamEvent(res: NextApiResponse, event: StreamEvent) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+// Helper function to safely parse JSON
+function tryParseJSON(jsonString: string): unknown | null {
+  try {
+    return JSON.parse(jsonString);
+  } catch {
+    return null;
+  }
+}
+
 async function searchInterviews(params: SearchParams): Promise<string> {
   try {
     const { query, searchType = 'hybrid', filters = {}, topK = 10, alpha = 0.5 } = params;
@@ -184,9 +193,9 @@ Always be precise and reference specific interview content when making claims.`;
           // Accumulate tool input
           toolInput += chunk.delta.partial_json;
 
-          // Try to parse partial JSON to show progress
-          try {
-            const partial = JSON.parse(toolInput);
+          // Try to parse partial JSON to show progress - but don't log errors
+          const partial = tryParseJSON(toolInput);
+          if (partial) {
             currentToolInput = partial;
             writeStreamEvent(res, {
               type: 'tool_call',
@@ -197,10 +206,8 @@ Always be precise and reference specific interview content when making claims.`;
                 input: partial
               }
             });
-          } catch (e) {
-            console.error(`Partial JSON input not yet complete: ${toolInput}`);
-            console.error('Error parsing JSON:', e);
           }
+          // If parsing fails, we just continue accumulating - this is normal for partial JSON
         }
       } else if (chunk.type === 'content_block_stop') {
         if (toolUseId && toolName === 'search_interviews') {
@@ -242,7 +249,7 @@ Always be precise and reference specific interview content when making claims.`;
 
             // Continue the conversation with tool result
             const followUpStream = await anthropic.messages.create({
-              model: 'claude-3-5-sonnet-20241022',
+              model: 'claude-sonnet-4-20250514',
               max_tokens: 4000,
               system: systemPrompt || defaultSystemPrompt,
               messages: [
@@ -289,7 +296,7 @@ Always be precise and reference specific interview content when making claims.`;
               type: 'error',
               data: {
                 message: `Search execution failed: ${errorMessage}`,
-                toolId: toolUseId
+                id: toolUseId
               }
             });
           }
