@@ -183,18 +183,28 @@ const InterviewSearchFrontend: React.FC = () => {
 
   const formatScore = (score: number) => (score).toFixed(6);
 
+  const escapeRegExp = (string: string) => {
+    // $& means the whole matched string
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   const highlightText = (text: string, query: string) => {
-    if (!query.trim() || searchType === 'vector') return text;
+    if (!query.trim() || !text || searchType === 'vector') {
+      return text.replace(/\{\{ct\d+\}\}/g, '').replace(/\{\{\d+\}\}/g, '');
+    }
 
     const words = query.trim().split(/\s+/);
     let highlighted = text;
 
     words.forEach(word => {
-      const regex = new RegExp(`(${word})`, 'gi');
-      highlighted = highlighted.replace(regex, '<mark class="bg-yellow-200/60 px-0.5 rounded-sm">$1</mark>');
+      if (word.length > 0) {
+        const escapedWord = escapeRegExp(word);
+        const regex = new RegExp(`\\b(${escapedWord})\\b`, 'gi');
+        highlighted = highlighted.replace(regex, '<mark class="bg-yellow-200/60 px-0.5 rounded-sm">$1</mark>');
+      }
     });
 
-    return highlighted;
+    return highlighted.replace(/\{\{ct\d+\}\}/g, '').replace(/\{\{\d+\}\}/g, '');
   };
 
   return (
