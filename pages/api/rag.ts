@@ -1,15 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import Anthropic from '@anthropic-ai/sdk';
 import { InterviewSearchSystem, VectorSearchResult } from '@/lib/interview-search';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-interface Interview {
-  _id: string;
-  id: string;
-  participant_id: string;
-  [key: string]: unknown;
-}
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -207,7 +198,8 @@ Always be precise and reference specific interview content when making claims.`;
               }
             });
           } catch (e) {
-            // Partial JSON, continue accumulating
+            console.error(`Partial JSON input not yet complete: ${toolInput}`);
+            console.error('Error parsing JSON:', e);
           }
         }
       } else if (chunk.type === 'content_block_stop') {
@@ -306,7 +298,6 @@ Always be precise and reference specific interview content when making claims.`;
           toolUseId = null;
           toolName = null;
           toolInput = '';
-          currentToolInput = null;
         }
       } else if (chunk.type === 'message_stop') {
         // Message completed

@@ -1,13 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { SearchResult } from '@/lib/interview-search';
+import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap } from 'lucide-react';
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -20,6 +15,14 @@ interface ToolCallInput {
   alpha?: number;
 }
 
+interface SearchResult {
+  interview_title?: string;
+  interview_id: string;
+  paragraph_text?: string;
+  participant_id: string;
+  score?: number;
+}
+
 interface ToolCallResult {
   results: SearchResult[];
   summary?: {
@@ -30,7 +33,6 @@ interface ToolCallResult {
   };
   error?: string;
 }
-
 
 interface ToolCall {
   id: string;
@@ -60,14 +62,11 @@ interface StreamEventData {
     hasError: boolean;
   };
   message?: string;
-};
+}
+
 interface StreamEvent {
   type: 'text' | 'tool_call' | 'tool_result' | 'error';
   data: string | StreamEventData;
-}
-
-interface RAGChatProps {
-  className?: string;
 }
 
 const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
@@ -78,145 +77,90 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
       case 'start':
       case 'input_update':
       case 'executing':
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+        return <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />;
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />;
       case 'error':
-        return <XCircle className="h-4 w-4 text-red-500" />;
+        return <XCircle className="h-3.5 w-3.5 text-rose-500" />;
       default:
-        return <Clock className="h-4 w-4 text-gray-400" />;
+        return <Clock className="h-3.5 w-3.5 text-slate-400" />;
     }
   };
 
   const getStatusText = () => {
     switch (toolCall.status) {
       case 'start':
-        return 'Initializing search...';
+        return 'Initializing...';
       case 'input_update':
-        return 'Processing query...';
+        return 'Processing...';
       case 'executing':
-        return 'Searching interviews...';
+        return 'Searching...';
       case 'completed':
-        return toolCall.summary ?
-          `Found ${toolCall.summary.resultsCount} results using ${toolCall.summary.searchType} search` :
-          'Search completed';
+        return toolCall.summary ? `${toolCall.summary.resultsCount} results found` : 'Complete';
       case 'error':
-        return toolCall.error || 'Search failed';
+        return 'Failed';
       default:
-        return 'Unknown status';
-    }
-  };
-
-  const getStatusColor = () => {
-    switch (toolCall.status) {
-      case 'start':
-      case 'input_update':
-      case 'executing':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'completed':
-        return 'bg-green-100 text-green-700 border-green-200';
-      case 'error':
-        return 'bg-red-100 text-red-700 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-700 border-gray-200';
+        return 'Pending';
     }
   };
 
   return (
-    <div className={`border rounded-lg p-3 my-2 ${getStatusColor()}`}>
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CollapsibleTrigger asChild>
-          <div className="flex items-center gap-2 cursor-pointer hover:bg-black/5 p-1 rounded">
-            {getStatusIcon()}
-            <Search className="h-4 w-4" />
-            <span className="font-medium text-sm">{toolCall.name}</span>
-            <Badge variant="outline" className="text-xs">
-              {getStatusText()}
-            </Badge>
-            <Eye className="h-3 w-3 ml-auto" />
-          </div>
-        </CollapsibleTrigger>
+    <div className="group relative">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2.5 px-3 py-2 bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-xl cursor-pointer hover:bg-white/90 hover:border-slate-300/60 transition-all duration-200 shadow-sm"
+      >
+        {getStatusIcon()}
+        <Search className="h-3.5 w-3.5 text-slate-500" />
+        <span className="text-sm font-medium text-slate-700">Interview Search</span>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-xs text-slate-500 px-2 py-0.5 bg-slate-100/80 rounded-full">
+            {getStatusText()}
+          </span>
+          <Eye className="h-3 w-3 text-slate-400" />
+        </div>
+      </div>
 
-        <CollapsibleContent className="mt-3 space-y-3">
-          {/* Tool Input */}
+      {isOpen && (
+        <div className="mt-2 p-3 bg-white/95 backdrop-blur-sm border border-slate-200/60 rounded-xl shadow-sm">
           {toolCall.input && (
-            <div className="bg-white/50 rounded p-2">
-              <div className="text-xs font-medium mb-1 flex items-center gap-1">
-                <span>Input:</span>
-                {toolCall.status === 'input_update' && (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                )}
+            <div className="mb-3">
+              <div className="text-xs font-medium text-slate-600 mb-1">Search Query</div>
+              <div className="text-sm text-slate-800 bg-slate-50/80 p-2 rounded-lg">
+                `{toolCall.input.query}`
               </div>
-              <pre className="text-xs bg-gray-50 p-2 rounded overflow-x-auto">
-                {JSON.stringify(toolCall.input, null, 2)}
-              </pre>
             </div>
           )}
 
-          {/* Tool Result */}
-          {toolCall.result && (
-            <div className="bg-white/50 rounded p-2">
-              <div className="text-xs font-medium mb-1">Result Summary:</div>
-              {toolCall.summary && (
-                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                  <div>
-                    <span className="font-medium">Query:</span> {toolCall.summary.query}
+          {toolCall.result?.results && toolCall.result.results.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-slate-600 mb-2">Top Results</div>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {toolCall.result.results.slice(0, 3).map((result, idx) => (
+                  <div key={idx} className="text-xs p-2 bg-slate-50/60 rounded-lg border border-slate-100">
+                    <div className="font-medium text-slate-800 mb-1">
+                      {result.interview_title || `Interview ${result.interview_id}`}
+                    </div>
+                    <div className="text-slate-600 line-clamp-2">
+                      {result.paragraph_text?.substring(0, 80)}...
+                    </div>
+                    <div className="text-slate-500 mt-1 flex items-center gap-2">
+                      <span>Score: {result.score?.toFixed(2)}</span>
+                      <span>•</span>
+                      <span>ID: {result.participant_id}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-medium">Search Type:</span> {toolCall.summary.searchType}
-                  </div>
-                  <div>
-                    <span className="font-medium">Results:</span> {toolCall.summary.resultsCount}
-                  </div>
-                  <div>
-                    <span className="font-medium">Status:</span>
-                    {toolCall.summary.hasError ? (
-                      <span className="text-red-600 ml-1">Error</span>
-                    ) : (
-                      <span className="text-green-600 ml-1">Success</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {toolCall.result.results && toolCall.result.results.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-xs font-medium mb-1">Top Results:</div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {toolCall.result.results.map((result: SearchResult, idx: number) => (
-                      <div key={idx} className="text-xs p-1 bg-gray-50 rounded">
-                        <div className="font-medium">
-                          {result.interview_title || `Interview ${result.interview_id}`}
-                        </div>
-                        <div className="text-gray-600 truncate">
-                          {result.paragraph_text?.substring(0, 100)}...
-                        </div>
-                        <div className="text-gray-500">
-                          Score: {result.score?.toFixed(3)} |
-                          Participant: {result.participant_id}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
           )}
-
-          {/* Error Display */}
-          {toolCall.error && (
-            <div className="bg-red-50 border border-red-200 rounded p-2">
-              <div className="text-xs font-medium text-red-700 mb-1">Error:</div>
-              <div className="text-xs text-red-600">{toolCall.error}</div>
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+        </div>
+      )}
     </div>
   );
 };
 
-export const RAGChat: React.FC<RAGChatProps> = ({ className = '' }) => {
+export const RAGChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -234,6 +178,10 @@ export const RAGChat: React.FC<RAGChatProps> = ({ className = '' }) => {
     scrollToBottom();
   }, [messages, streamingMessage, currentToolCalls]);
 
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   const sendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -246,140 +194,18 @@ export const RAGChat: React.FC<RAGChatProps> = ({ className = '' }) => {
     setCurrentToolCalls({});
     setCompletedToolCalls([]);
 
-    try {
-      const response = await fetch('/api/rag', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: updatedMessages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
-      });
+    // Simulate API call with mock data
+    setTimeout(() => {
+      const mockResponse = `Based on the interview data, I can provide insights about participant experiences. The search revealed several key themes including technology adoption challenges, user interface preferences, and workflow optimization strategies. Participants consistently mentioned the importance of intuitive design and seamless integration with existing systems.`;
 
-      if (!response.ok) {
-        throw new Error(`RAG request failed: ${response.statusText}`);
-      }
-
-      if (!response.body) {
-        throw new Error('No response body available');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantMessage = '';
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const eventData = line.slice(6);
-            if (eventData === '[DONE]') {
-              continue;
-            }
-
-            try {
-              const event: StreamEvent = JSON.parse(eventData);
-              console.log('Received SSE event:', event);
-
-              switch (event.type) {
-                case 'text':
-                  assistantMessage += event.data;
-                  setStreamingMessage(assistantMessage);
-                  break;
-
-                case 'tool_call':
-                  const toolCallData = event.data as StreamEventData;
-                  setCurrentToolCalls(prev => ({
-                    ...prev,
-                    [toolCallData.id]: {
-                      id: toolCallData.id,
-                      name: toolCallData.name,
-                      status: toolCallData.status,
-                      input: toolCallData.input || prev[toolCallData.id]?.input,
-                      result: prev[toolCallData.id]?.result,
-                      summary: prev[toolCallData.id]?.summary,
-                      error: prev[toolCallData.id]?.error
-                    }
-                  }));
-                  break;
-
-                case 'tool_result':
-                  const toolResultData = event.data as StreamEventData;
-                  setCurrentToolCalls(prev => ({
-                    ...prev,
-                    [toolResultData.id]: {
-                      ...prev[toolResultData.id],
-                      status: 'completed',
-                      result: toolResultData.result,
-                      summary: toolResultData.summary
-                    }
-                  }));
-
-                  // Move to completed tools after a delay
-                  setTimeout(() => {
-                    setCurrentToolCalls(prev => {
-                      const { [toolResultData.id]: completed, ...remaining } = prev;
-                      if (completed) {
-                        setCompletedToolCalls(prevCompleted => [...prevCompleted, completed]);
-                      }
-                      return remaining;
-                    });
-                  }, 2000);
-                  break;
-
-                case 'error':
-                  const errorData = event.data as StreamEventData;
-                  if (errorData.id) {
-                    setCurrentToolCalls(prev => ({
-                      ...prev,
-                      [errorData.id]: {
-                        ...prev[errorData.id],
-                        status: 'error',
-                        error: errorData.message
-                      }
-                    }));
-                  } else {
-                    assistantMessage += `\n\n[Error: ${errorData.message}]`;
-                    setStreamingMessage(assistantMessage);
-                  }
-                  break;
-              }
-            } catch (e) {
-              console.warn('Failed to parse SSE data:', eventData, e);
-            }
-          }
-        }
-      }
-
-      // Add the complete assistant message to the conversation
-      if (assistantMessage) {
-        const assistantMsg: Message = { role: 'assistant', content: assistantMessage };
-        setMessages(prev => [...prev, assistantMsg]);
-        setStreamingMessage('');
-      }
-
-    } catch (error) {
-      console.error('RAG error:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
+      setStreamingMessage(mockResponse);
       setIsLoading(false);
-      inputRef.current?.focus();
-    }
+
+      setTimeout(() => {
+        setMessages(prev => [...prev, { role: 'assistant', content: mockResponse }]);
+        setStreamingMessage('');
+      }, 1000);
+    }, 2000);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -397,165 +223,205 @@ export const RAGChat: React.FC<RAGChatProps> = ({ className = '' }) => {
     inputRef.current?.focus();
   };
 
+  const exampleQuestions = [
+    "What are the main themes in the interviews?",
+    "Tell me about user experience challenges",
+    "What technology trends were discussed?"
+  ];
+
   return (
-    <Card className={`flex flex-col h-[700px] ${className}`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-blue-600" />
-          RAG Interview Assistant
-          <Sparkles className="h-4 w-4 text-yellow-500" />
-        </CardTitle>
-        <p className="text-sm text-gray-600">
-          Ask questions about the interview data. The AI will search for relevant context and provide comprehensive answers.
-        </p>
-        {messages.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clearChat}
-            className="w-fit self-end"
-          >
-            Clear Chat
-          </Button>
-        )}
-      </CardHeader>
-
-      <CardContent className="flex-1 flex flex-col gap-4">
-        {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-          {messages.length === 0 && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
-            <div className="text-center text-gray-500 py-8">
-              <Bot className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-lg font-medium mb-2">Welcome to RAG Chat!</p>
-              <p className="text-sm">
-                Ask me anything about the interview data. I&apos;ll search for relevant information and provide detailed answers.
-              </p>
-              <div className="mt-4 text-xs text-gray-400 space-y-1">
-                <p>Example questions:</p>
-                <p>&quot;What are the main themes discussed in the interviews?&quot;</p>
-                <p>&quot;Tell me about participant experiences with technology&quot;</p>
-                <p>&quot;What challenges were mentioned most frequently?&quot;</p>
+    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
+      {/* Header */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200/60 bg-white/80 backdrop-blur-sm">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
+                <Bot className="h-5 w-5 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full flex items-center justify-center">
+                <Sparkles className="h-2.5 w-2.5 text-white" />
               </div>
             </div>
-          )}
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900">Interview Assistant</h1>
+              <p className="text-sm text-slate-600">AI-powered research insights</p>
+            </div>
+          </div>
 
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 rounded-lg transition-all duration-200"
             >
-              {message.role === 'assistant' && (
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-blue-600" />
-                </div>
-              )}
-
-              <div
-                className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
-                  }`}
-              >
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {message.content}
-                </div>
-              </div>
-
-              {message.role === 'user' && (
-                <div className="flex-shrink-0 w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-white" />
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Show completed tool calls for context */}
-          {completedToolCalls.length > 0 && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Bot className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="max-w-[80%]">
-                {completedToolCalls.map((toolCall) => (
-                  <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                ))}
-              </div>
-            </div>
+              New Chat
+            </button>
           )}
-
-          {/* Show active tool calls */}
-          {Object.keys(currentToolCalls).length > 0 && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Bot className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="max-w-[80%]">
-                {Object.values(currentToolCalls).map((toolCall) => (
-                  <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Streaming Message */}
-          {streamingMessage && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Bot className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100 text-gray-900">
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {streamingMessage}
-                  <span className="inline-block w-2 h-4 bg-blue-500 ml-1 animate-pulse" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Loading indicator */}
-          {isLoading && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-              </div>
-              <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100 text-gray-900">
-                <div className="text-sm text-gray-500">
-                  Initializing search...
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
         </div>
+      </div>
 
-        {/* Input Area */}
-        <div className="flex gap-2 pt-2 border-t">
-          <Input
-            ref={inputRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask a question about the interview data..."
-            disabled={isLoading}
-            className="flex-1"
-          />
-          <Button
-            onClick={sendMessage}
-            disabled={!inputValue.trim() || isLoading}
-            size="sm"
-            className="px-3"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
+      {/* Messages Container */}
+      <div className="flex-1 overflow-hidden">
+        <div className="max-w-4xl mx-auto h-full flex flex-col">
+          <div className="flex-1 overflow-y-auto px-6 py-6">
+            {messages.length === 0 && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                  <MessageSquare className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-semibold text-slate-900 mb-2">
+                  Welcome to Interview Assistant
+                </h2>
+                <p className="text-slate-600 mb-8 max-w-md">
+                  Ask me anything about your interview data. I will search through conversations and provide detailed insights.
+                </p>
+
+                <div className="grid gap-3 w-full max-w-lg">
+                  <div className="text-sm font-medium text-slate-700 mb-2">Try asking:</div>
+                  {exampleQuestions.map((question, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setInputValue(question)}
+                      className="group p-4 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/60 rounded-xl text-left transition-all duration-200 hover:shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Zap className="h-4 w-4 text-indigo-500 group-hover:text-indigo-600 transition-colors" />
+                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">
+                          {question}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-          </Button>
+
+            <div className="space-y-6">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                >
+                  <div className="flex-shrink-0">
+                    {message.role === 'assistant' ? (
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center">
+                        <User className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className={`max-w-3xl ${message.role === 'user'
+                      ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                      : 'bg-white border border-slate-200/60'
+                      } rounded-2xl px-5 py-4 shadow-sm`}
+                  >
+                    <div className={`text-sm leading-relaxed ${message.role === 'user' ? 'text-white' : 'text-slate-800'}`}>
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Tool Calls */}
+              {(Object.keys(currentToolCalls).length > 0 || completedToolCalls.length > 0) && (
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    {Object.values(currentToolCalls).map((toolCall) => (
+                      <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                    ))}
+                    {completedToolCalls.map((toolCall) => (
+                      <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Streaming Message */}
+              {streamingMessage && (
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="max-w-3xl bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
+                    <div className="text-sm leading-relaxed text-slate-800">
+                      {streamingMessage}
+                      <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-1 animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loading */}
+              {isLoading && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 text-white animate-spin" />
+                    </div>
+                  </div>
+                  <div className="bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75" />
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150" />
+                      </div>
+                      <span className="text-sm text-slate-600">Thinking...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="flex-shrink-0 px-6 py-4 bg-white/80 backdrop-blur-sm border-t border-slate-200/60">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <div className="relative">
+                  <input
+                    ref={inputRef}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Ask about the interview data..."
+                    disabled={isLoading}
+                    className="w-full px-4 py-3 pr-12 bg-white border border-slate-200/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-200 text-sm placeholder-slate-500 disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <button
+                      onClick={sendMessage}
+                      disabled={!inputValue.trim() || isLoading}
+                      className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 rounded-lg flex items-center justify-center transition-all duration-200 shadow-sm disabled:shadow-none group"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 text-white animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
-export default RAGChat;
