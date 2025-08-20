@@ -42,6 +42,60 @@ interface SearchParams {
   filters?: Record<string, unknown>;
 }
 
+// Utility function to extract line numbers from text
+const extractLineNumbers = (text: string): number[] => {
+  const patterns = [
+    /\{\{(\d+)\}\}/g,        // matches {{5}}
+    /\{\{ct(\d+)\}\}/g       // matches {{ct3}}
+  ];
+
+  const lineNumbers: number[] = [];
+
+  patterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const lineNum = parseInt(match[1], 10);
+      if (!isNaN(lineNum) && lineNum > 0) {
+        lineNumbers.push(lineNum);
+      }
+    }
+  });
+
+  return [...new Set(lineNumbers)].sort((a, b) => a - b); // Remove duplicates and sort
+};
+
+// Component to render transcript with highlighted lines
+const TranscriptViewer: React.FC<{ transcript: string; highlightedLines?: number[] }> = ({
+  transcript,
+  highlightedLines = []
+}) => {
+  // Split by double newlines to get each speaker turn, then filter out empty strings
+  const lines = transcript.split('\n\n').filter(line => line.trim() !== '');
+
+  return (
+    <div className="font-mono text-xs space-y-3">
+      {lines.map((line, index) => {
+        const lineNumber = index + 1;
+        const isHighlighted = highlightedLines.includes(lineNumber);
+
+        return (
+          <div
+            key={index}
+            className={`flex ${isHighlighted ? 'bg-yellow-200/40 border-l-4 border-yellow-500 pl-2' : ''}`}
+          >
+            <div className={`w-8 text-right pr-2 text-gray-400 select-none flex-shrink-0 ${isHighlighted ? 'text-yellow-600 font-semibold' : ''}`}>
+              {lineNumber}
+            </div>
+            <div className={`flex-1 whitespace-pre-wrap ${isHighlighted ? 'bg-yellow-100/60 px-2 py-1 rounded' : ''}`}>
+              {line.trim()}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // Search service abstraction
 class SearchService {
   private static async makeRequest(endpoint: string, data: SearchParams) {
@@ -56,8 +110,12 @@ class SearchService {
     if (!response.ok) {
       throw new Error(`Search failed: ${response.statusText}`);
     }
-
-    return response.json();
+    const result: { chunks: SearchResult[], interviews: Interview[] } = await response.json();
+    for (const chunk of result.chunks) {
+      // Ensure id is a string for consistency
+      chunk.paragraph_text = chunk.paragraph_text?.replaceAll(/</g, '{').replaceAll(/>/g, '}');
+    }
+    return result;
   }
 
   static async search(params: SearchParams): Promise<{ chunks: SearchResult[], interviews: Interview[] }> {
@@ -186,7 +244,7 @@ const InterviewSearchFrontend: React.FC = () => {
                 </Label>
                 <RadioGroup
                   value={searchType}
-                  onValueChange={(value) => setSearchType(value as SearchType)} // ✅ cast
+                  onValueChange={(value) => setSearchType(value as SearchType)}
                   className="grid grid-cols-3 gap-3"
                 >
                   {(["vector", "keyword", "hybrid"] as const).map((type) => {
@@ -217,7 +275,6 @@ const InterviewSearchFrontend: React.FC = () => {
                     );
                   })}
                 </RadioGroup>
-
               </div>
 
               {/* Results Count */}
@@ -308,40 +365,6 @@ const InterviewSearchFrontend: React.FC = () => {
           </Card>
         )}
 
-        {/* Interviews Section */}
-        {/* {interviews.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold mb-4">Interviews ({interviews.length})</h2>
-            <div className="space-y-4">
-              {interviews.map(iv => (
-                <Card key={iv.id} className="border-blue-200">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold">Interview ID: {iv.id}</div>
-                      {iv.participant_id && <Badge variant="outline">Participant {iv.participant_id}</Badge>}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <details className="text-sm space-y-2">
-                      <summary className="cursor-pointer text-blue-600">Transcript</summary>
-                      <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{iv.editedTranscript}
-                      </pre>
-                    </details>
-                    {iv.aiGeneratedDocument && (
-                      <details className="text-sm mt-4 space-y-2">
-                        <summary className="cursor-pointer text-purple-600">AI Generated Document</summary>
-                        <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{iv.aiGeneratedDocument}
-                        </pre>
-                      </details>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )} */}
-
-
         {/* Results Header */}
         {chunks.length > 0 && (
           <div className="flex items-center justify-between mb-6 mt-12">
@@ -353,108 +376,134 @@ const InterviewSearchFrontend: React.FC = () => {
 
         {/* Elegant Results Display */}
         <div className="space-y-4">
-          {chunks.map((result, index) => (
-            <Card key={result.id} className="backdrop-blur-sm bg-white/90 border-white/20 hover:shadow-xl transition-all duration-300">
-              <CardContent className="p-6">
-                {/* Result Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <FileText className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-lg">
-                          {result.interview_title || 'Untitled Interview'}
-                        </h3>
-                        {result.participant_id && (
-                          <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
-                            <User className="w-3 h-3" />
-                            <span>Participant {result.participant_id}</span>
-                          </div>
-                        )}
-                        {result.interview_id && (
-                          <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
-                            <MessageSquare className="w-3 h-3" />
-                            <span>Interview {result.interview_id}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {result.paragraph_title && (
-                      <Badge variant="outline" className="mb-3">
-                        {result.paragraph_title}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Sophisticated Score Display */}
-                  <div className="text-right">
-                    <div className="relative">
-                      <div className="text-2xl font-bold bg-gradient-to-br from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {formatScore(result.score)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">relevance</div>
-                    </div>
-
-                    {searchType === 'hybrid' && result.vector_score !== undefined && result.keyword_score !== undefined && (
-                      <div className="mt-3 space-y-1 text-xs">
-                        <div className="flex items-center justify-between space-x-2">
-                          <span className="text-muted-foreground">Semantic:</span>
-                          <span className="font-medium text-blue-600">{formatScore(result.vector_score)}</span>
+          {chunks.map((result, index) => {
+            // Extract line numbers from paragraph text if available
+            const paragraphLineNumbers = result.paragraph_text ? extractLineNumbers(result.paragraph_text) : [];
+            // Extract line numbers from interview transcript if available
+            const transcriptLineNumbers = result.interview?.editedTranscript ? extractLineNumbers(result.interview.editedTranscript) : [];
+            return (
+              <Card key={result.id} className="backdrop-blur-sm bg-white/90 border-white/20 hover:shadow-xl transition-all duration-300">
+                <CardContent className="p-6">
+                  {/* Result Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <FileText className="w-4 h-4 text-primary" />
                         </div>
-                        <div className="flex items-center justify-between space-x-2">
-                          <span className="text-muted-foreground">Keyword:</span>
-                          <span className="font-medium text-purple-600">{formatScore(result.keyword_score)}</span>
+                        <div>
+                          <h3 className="font-bold text-lg">
+                            {result.interview_title || 'Untitled Interview'}
+                          </h3>
+                          {result.participant_id && (
+                            <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
+                              <User className="w-3 h-3" />
+                              <span>Participant {result.participant_id}</span>
+                            </div>
+                          )}
+                          {result.interview_id && (
+                            <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
+                              <MessageSquare className="w-3 h-3" />
+                              <span>Interview {result.interview_id}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Content with Elegant Typography */}
-                {result.paragraph_text && (
-                  <div className="prose prose-gray max-w-none">
-                    <div className="flex items-start space-x-3">
-                      <div className="p-1.5 bg-muted rounded-lg mt-1">
-                        <MessageSquare className="w-3 h-3 text-muted-foreground" />
+                      {result.paragraph_title && (
+                        <Badge variant="outline" className="mb-3">
+                          {result.paragraph_title}
+                        </Badge>
+                      )}
+
+                      {/* Show highlighted line numbers if found */}
+                      {paragraphLineNumbers.length > 0 && (
+                        <div className="mb-3">
+                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                            📍 Lines: {paragraphLineNumbers.join(', ')}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sophisticated Score Display */}
+                    <div className="text-right">
+                      <div className="relative">
+                        <div className="text-2xl font-bold bg-gradient-to-br from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                          {formatScore(result.score)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">relevance</div>
                       </div>
-                      <p
-                        className="text-foreground leading-relaxed text-base"
-                        dangerouslySetInnerHTML={{
-                          __html: highlightText(result.paragraph_text.replace(/</g, '{').replace(/>/g, '}'), query)
-                        }}
-                      />
+
+                      {searchType === 'hybrid' && result.vector_score !== undefined && result.keyword_score !== undefined && (
+                        <div className="mt-3 space-y-1 text-xs">
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-muted-foreground">Semantic:</span>
+                            <span className="font-medium text-blue-600">{formatScore(result.vector_score)}</span>
+                          </div>
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-muted-foreground">Keyword:</span>
+                            <span className="font-medium text-purple-600">{formatScore(result.keyword_score)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
 
-                {result.interview && (
-                  <div className="mt-4 pt-4 border-t border-dashed">
-                    <details className="text-sm space-y-2">
-                      <summary className="cursor-pointer text-blue-600">Transcript</summary>
-                      <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{result.interview.editedTranscript}</pre>
-                    </details>
-                  </div>
-                )}
+                  {/* Content with Elegant Typography */}
+                  {result.paragraph_text && (
+                    <div className="prose prose-gray max-w-none">
+                      <div className="flex items-start space-x-3">
+                        <div className="p-1.5 bg-muted rounded-lg mt-1">
+                          <MessageSquare className="w-3 h-3 text-muted-foreground" />
+                        </div>
+                        <p
+                          className="text-foreground leading-relaxed text-base"
+                          dangerouslySetInnerHTML={{
+                            __html: highlightText(result.paragraph_text, query)
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                {/* Metadata Footer */}
-                <div className="flex items-center justify-between mt-6 pt-4 border-t">
-                  <div className="flex items-center space-x-3 text-xs text-muted-foreground">
-                    {result.interview_id && (
-                      <Badge variant="secondary">
-                        ID: {result.interview_id}
-                      </Badge>
-                    )}
+                  {result.interview && (
+                    <div className="mt-4 pt-4 border-t border-dashed">
+                      <details className="text-sm space-y-2">
+                        <summary className="cursor-pointer text-blue-600 font-medium">
+                          Transcript {transcriptLineNumbers.length > 0 && (
+                            <span className="ml-2 text-yellow-600">
+                              (Lines {transcriptLineNumbers.join(', ')} highlighted)
+                            </span>
+                          )}
+                        </summary>
+                        <div className="max-h-80 overflow-auto p-4 bg-gray-50 rounded-md border">
+                          <TranscriptViewer
+                            transcript={result.interview.editedTranscript}
+                            highlightedLines={paragraphLineNumbers.length > 0 ? paragraphLineNumbers : transcriptLineNumbers}
+                          />
+                        </div>
+                      </details>
+                    </div>
+                  )}
+
+                  {/* Metadata Footer */}
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                    <div className="flex items-center space-x-3 text-xs text-muted-foreground">
+                      {result.interview_id && (
+                        <Badge variant="secondary">
+                          ID: {result.interview_id}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Result #{index + 1}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Result #{index + 1}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Elegant Empty States */}
