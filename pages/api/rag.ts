@@ -25,7 +25,7 @@ const searchTool = {
     properties: {
       query: {
         type: "string",
-        description: "The search query to find relevant interview content"
+        description: "The search query to find relevant interview content. make the query self-contained and clear, meaning, it should not require additional context to understand.",
       },
       searchType: {
         type: "string",
@@ -62,6 +62,16 @@ interface SearchParams {
   alpha?: number;
 }
 
+// Stream event types
+interface StreamEvent {
+  type: 'text' | 'tool_call' | 'tool_result' | 'error';
+  data: unknown;
+}
+
+function writeStreamEvent(res: NextApiResponse, event: StreamEvent) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
 async function searchInterviews(params: SearchParams): Promise<string> {
   try {
     const { query, searchType = 'hybrid', filters = {}, topK = 10, alpha = 0.5 } = params;
@@ -82,33 +92,6 @@ async function searchInterviews(params: SearchParams): Promise<string> {
         break;
     }
 
-    // Load interview metadata
-    const interviewIds = Array.from(
-      new Set(
-        (results || [])
-          .map((r) => r.interview_id)
-          .filter((id): id is string => Boolean(id))
-      )
-    );
-
-    let interviews: Interview[] = [];
-    try {
-      const filePath = path.join(process.cwd(), 'data', 'interviews.json');
-      const raw = await fs.readFile(filePath, 'utf-8');
-      const all = JSON.parse(raw) as Interview[];
-      interviews = interviewIds
-        .map(id => {
-          const found = all.find((it) => it._id === id || it.id === id);
-          if (!found) return null;
-          const responseInterview = { ...found, id: found._id ?? found.id };
-          delete (responseInterview as Partial<Interview>)._id;
-          return responseInterview;
-        })
-        .filter((i): i is Interview => Boolean(i));
-    } catch (e) {
-      console.warn('Failed to load interviews.json:', e);
-    }
-
     // Format the search results for the AI
     const formattedResults = results?.map((result, index) => ({
       rank: index + 1,
@@ -125,7 +108,6 @@ async function searchInterviews(params: SearchParams): Promise<string> {
       searchType,
       resultsCount: formattedResults.length,
       results: formattedResults,
-      interviews
     });
   } catch (error) {
     console.error('Search error:', error);
@@ -146,11 +128,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    // Set up streaming response
+    // Set up Server-Sent Events streaming
     res.writeHead(200, {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-cache',
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
     });
 
     const defaultSystemPrompt = `You are an AI assistant specialized in analyzing interview data. You have access to a search tool that can find relevant interview content based on user queries.
@@ -166,7 +150,7 @@ Always be precise and reference specific interview content when making claims.`;
 
     // Create the message stream with tool calling
     const stream = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       system: systemPrompt || defaultSystemPrompt,
       messages,
@@ -177,6 +161,7 @@ Always be precise and reference specific interview content when making claims.`;
     let toolUseId: string | null = null;
     let toolName: string | null = null;
     let toolInput: string = '';
+    let currentToolInput: unknown = null;
 
     for await (const chunk of stream) {
       if (chunk.type === 'message_start') {
@@ -186,21 +171,82 @@ Always be precise and reference specific interview content when making claims.`;
         if (chunk.content_block.type === 'tool_use') {
           toolUseId = chunk.content_block.id;
           toolName = chunk.content_block.name;
+          toolInput = '';
+          // Send tool call start event
+          writeStreamEvent(res, {
+            type: 'tool_call',
+            data: {
+              status: 'start',
+              id: toolUseId,
+              name: toolName
+            }
+          });
         }
       } else if (chunk.type === 'content_block_delta') {
         if (chunk.delta.type === 'text_delta') {
           // Stream text content
-          res.write(chunk.delta.text);
+          writeStreamEvent(res, {
+            type: 'text',
+            data: chunk.delta.text
+          });
         } else if (chunk.delta.type === 'input_json_delta') {
           // Accumulate tool input
           toolInput += chunk.delta.partial_json;
+
+          // Try to parse partial JSON to show progress
+          try {
+            const partial = JSON.parse(toolInput);
+            currentToolInput = partial;
+            writeStreamEvent(res, {
+              type: 'tool_call',
+              data: {
+                status: 'input_update',
+                id: toolUseId,
+                name: toolName,
+                input: partial
+              }
+            });
+          } catch (e) {
+            // Partial JSON, continue accumulating
+          }
         }
       } else if (chunk.type === 'content_block_stop') {
         if (toolUseId && toolName === 'search_interviews') {
           try {
-            // Execute the tool
+            // Parse and execute the tool
             const parsedInput = JSON.parse(toolInput);
+            currentToolInput = parsedInput;
+
+            // Send tool call input complete event
+            writeStreamEvent(res, {
+              type: 'tool_call',
+              data: {
+                status: 'executing',
+                id: toolUseId,
+                name: toolName,
+                input: parsedInput
+              }
+            });
+
+            // Execute the tool
             const toolResult = await searchInterviews(parsedInput);
+            const parsedResult = JSON.parse(toolResult);
+
+            // Send tool result event
+            writeStreamEvent(res, {
+              type: 'tool_result',
+              data: {
+                id: toolUseId,
+                name: toolName,
+                result: parsedResult,
+                summary: {
+                  query: parsedResult.query,
+                  searchType: parsedResult.searchType,
+                  resultsCount: parsedResult.resultsCount,
+                  hasError: !!parsedResult.error
+                }
+              }
+            });
 
             // Continue the conversation with tool result
             const followUpStream = await anthropic.messages.create({
@@ -237,19 +283,30 @@ Always be precise and reference specific interview content when making claims.`;
             // Stream the follow-up response
             for await (const followUpChunk of followUpStream) {
               if (followUpChunk.type === 'content_block_delta' && followUpChunk.delta.type === 'text_delta') {
-                res.write(followUpChunk.delta.text);
+                writeStreamEvent(res, {
+                  type: 'text',
+                  data: followUpChunk.delta.text
+                });
               }
             }
           } catch (error) {
             console.error('Tool execution error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            res.write(`\n\n[Error executing search: ${errorMessage}]`);
+
+            writeStreamEvent(res, {
+              type: 'error',
+              data: {
+                message: `Search execution failed: ${errorMessage}`,
+                toolId: toolUseId
+              }
+            });
           }
 
           // Reset tool state
           toolUseId = null;
           toolName = null;
           toolInput = '';
+          currentToolInput = null;
         }
       } else if (chunk.type === 'message_stop') {
         // Message completed
@@ -257,14 +314,26 @@ Always be precise and reference specific interview content when making claims.`;
       }
     }
 
+    // Send end event
+    writeStreamEvent(res, {
+      type: 'text',
+      data: ''
+    });
+
     res.end();
   } catch (error) {
     console.error('RAG endpoint error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     if (!res.headersSent) {
       res.status(500).json({ error: 'RAG processing failed', details: errorMessage });
     } else {
-      res.write(`\n\n[Error: ${errorMessage}]`);
+      writeStreamEvent(res, {
+        type: 'error',
+        data: {
+          message: `RAG processing failed: ${errorMessage}`
+        }
+      });
       res.end();
     }
   }
