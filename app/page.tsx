@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Loader2, FileText, User, MessageSquare, Sparkles, Zap, Brain, Clock, Target } from 'lucide-react';
+import { Search, Loader2, FileText, User, MessageSquare, Sparkles, Zap, Brain, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
