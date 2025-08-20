@@ -294,7 +294,7 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
                       {result.paragraph_text}
                     </div>
                     <div className="text-slate-500 mt-1 flex items-center gap-2">
-                      <span>Score: {result.score?.toFixed(2)}</span>
+                      <span>Score: {result.score?.toFixed(5)}</span>
                       <span>•</span>
                       <span>ID: {result.participant_id}</span>
                     </div>
@@ -428,7 +428,12 @@ export const RAGChat: React.FC = () => {
                     setCurrentToolCalls(prev => {
                       const { [toolResultData.id]: completed, ...remaining } = prev;
                       if (completed) {
-                        setCompletedToolCalls(prevCompleted => [...prevCompleted, completed]);
+                        setCompletedToolCalls(prevCompleted => {
+                          if (!prevCompleted.some(tc => tc.id === completed.id)) {
+                            return [...prevCompleted, completed];
+                          }
+                          return prevCompleted;
+                        });
                       }
                       return remaining;
                     });

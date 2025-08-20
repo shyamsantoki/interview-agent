@@ -150,7 +150,7 @@ Always be precise and reference specific interview content when making claims.`;
 
     // Create the message stream with tool calling
     const stream = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-7-sonnet-20250219',
       max_tokens: 4000,
       system: systemPrompt || defaultSystemPrompt,
       messages,
@@ -173,6 +173,11 @@ Always be precise and reference specific interview content when making claims.`;
           toolName = chunk.content_block.name;
           toolInput = '';
           // Send tool call start event
+          writeStreamEvent(res, {
+            type: 'text',
+            data: '`TOOL CALL START`\n'
+          });
+
           writeStreamEvent(res, {
             type: 'tool_call',
             data: {
@@ -214,7 +219,6 @@ Always be precise and reference specific interview content when making claims.`;
           try {
             // Parse and execute the tool
             const parsedInput = JSON.parse(toolInput);
-            currentToolInput = parsedInput;
 
             // Send tool call input complete event
             writeStreamEvent(res, {
@@ -249,7 +253,7 @@ Always be precise and reference specific interview content when making claims.`;
 
             // Continue the conversation with tool result
             const followUpStream = await anthropic.messages.create({
-              model: 'claude-sonnet-4-20250514',
+              model: 'claude-3-7-sonnet-20250219',
               max_tokens: 4000,
               system: systemPrompt || defaultSystemPrompt,
               messages: [
