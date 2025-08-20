@@ -181,7 +181,7 @@ const InterviewSearchFrontend: React.FC = () => {
     return configs[type];
   };
 
-  const formatScore = (score: number) => (score).toFixed(1);
+  const formatScore = (score: number) => (score).toFixed(6);
 
   const highlightText = (text: string, query: string) => {
     if (!query.trim() || searchType === 'vector') return text;
