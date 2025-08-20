@@ -1,7 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { InterviewSearchSystem } from '@/lib/interview-search';
+import { InterviewSearchSystem, VectorSearchResult } from '@/lib/interview-search';
 import { promises as fs } from 'fs';
 import path from 'path';
+
+interface Interview {
+  _id: string;
+  id: string;
+  [key: string]: unknown;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -13,7 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const searchSystem = new InterviewSearchSystem();
 
-    let results;
+    let results: VectorSearchResult[];
     switch (searchType) {
       case 'vector':
         results = await searchSystem.vectorSearch(query, filters, topK);
@@ -30,24 +36,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const interviewIds = Array.from(
       new Set(
         (results || [])
-          .map((r: any) => r.interview_id)
-          .filter((id: any): id is string => Boolean(id))
+          .map((r) => r.interview_id)
+          .filter((id): id is string => Boolean(id))
       )
     );
 
-    let interviews: any[] = [];
+    let interviews: Interview[] = [];
     try {
       const filePath = path.join(process.cwd(), 'data', 'interviews.json');
       const raw = await fs.readFile(filePath, 'utf-8');
-      const all = JSON.parse(raw);
+      const all = JSON.parse(raw) as Interview[];
       interviews = interviewIds
         .map(id => {
-          const found = all.find((it: any) => it._id === id || it.id === id);
+          const found = all.find((it) => it._id === id || it.id === id);
           if (!found) return null;
-          const { _id, ...rest } = found;
-          return { id: _id ?? found.id, ...rest };
+          const responseInterview = { ...found, id: found._id ?? found.id };
+          delete (responseInterview as Partial<Interview>)._id;
+          return responseInterview;
         })
-        .filter(Boolean) as any[];
+        .filter((i): i is Interview => Boolean(i));
     } catch (e) {
       console.warn('Failed to load interviews.json:', e);
     }

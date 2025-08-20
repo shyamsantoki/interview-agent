@@ -1,9 +1,9 @@
 import Turbopuffer from '@turbopuffer/turbopuffer';
 import OpenAI from 'openai';
-import { RankByVector, RankByText, Row } from '@turbopuffer/turbopuffer/resources';
+import { RankByVector, RankByText, Row, Filter } from '@turbopuffer/turbopuffer/resources';
 
 // Types for the interview search system
-interface SearchResult {
+export interface SearchResult {
   id: string | number;
   score: number;
   interview_id?: string;
@@ -13,7 +13,7 @@ interface SearchResult {
   paragraph_text?: string;
 }
 
-interface VectorSearchResult extends SearchResult {
+export interface VectorSearchResult extends SearchResult {
   vector_score?: number;
   keyword_score?: number;
 }
@@ -21,7 +21,7 @@ interface VectorSearchResult extends SearchResult {
 interface FilterOptions {
   interview_id?: string;
   participant_id?: string;
-  [key: string]: any;
+  [key: string]: string | undefined;
 }
 
 // Placeholder for embedding generation function
@@ -79,7 +79,7 @@ export class InterviewSearchSystem {
     const result = await this.namespace.query({
       rank_by: ['vector', 'ANN', queryVector],
       top_k: topK,
-      // filters: filterArray,
+      filters: filterArray,
       include_attributes: [
         'interview_id',
         'participant_id',
@@ -89,14 +89,14 @@ export class InterviewSearchSystem {
       ]
     });
 
-    return result.rows?.map((row: any) => ({
+    return result.rows?.map((row: Row) => ({
       id: row.id,
       score: 1 - (row.$dist || 0),
-      interview_id: row.interview_id,
-      participant_id: row.participant_id,
-      interview_title: row.interview_title,
-      paragraph_title: row.paragraph_title,
-      paragraph_text: row.paragraph_text,
+      interview_id: row.interview_id as string,
+      participant_id: row.participant_id as string,
+      interview_title: row.interview_title as string,
+      paragraph_title: row.paragraph_title as string,
+      paragraph_text: row.paragraph_text as string,
     })) || [];
   }
 
@@ -132,7 +132,7 @@ export class InterviewSearchSystem {
     const result = await this.namespace.query({
       rank_by: rankBy as RankByText,
       top_k: topK,
-      // filters: filterArray,
+      filters: filterArray,
       include_attributes: [
         'interview_id',
         'participant_id',
@@ -142,14 +142,14 @@ export class InterviewSearchSystem {
       ]
     });
 
-    return result.rows?.map((row: any) => ({
+    return result.rows?.map((row: Row) => ({
       id: row.id,
       score: row.$dist || 0,
-      interview_id: row.interview_id,
-      participant_id: row.participant_id,
-      interview_title: row.interview_title,
-      paragraph_title: row.paragraph_title,
-      paragraph_text: row.paragraph_text,
+      interview_id: row.interview_id as string,
+      participant_id: row.participant_id as string,
+      interview_title: row.interview_title as string,
+      paragraph_title: row.paragraph_title as string,
+      paragraph_text: row.paragraph_text as string,
     })) || [];
   }
 
@@ -180,7 +180,7 @@ export class InterviewSearchSystem {
         label: 'vector_search',
         rank_by: ['vector', 'ANN', queryVector] as RankByVector,
         top_k: Math.ceil(topK * alpha),
-        filters: undefined, // Cast to avoid type issues
+        filters: filterArray,
         include_attributes: [
           'interview_id',
           'participant_id',
@@ -201,7 +201,7 @@ export class InterviewSearchSystem {
             RankByText[]
           ],
         top_k: Math.ceil(topK * (1 - alpha)),
-        filters: undefined, // Cast to avoid type issues
+        filters: filterArray,
         include_attributes: [
           'interview_id',
           'participant_id',
@@ -275,23 +275,22 @@ export class InterviewSearchSystem {
     return sortedResults;
   }
 
-  private buildFilterArray(filters: FilterOptions): any[] {
+  private buildFilterArray(filters: FilterOptions): Filter | undefined {
     /**
      * Convert filter object to Turbopuffer filter array format
      */
-    const filterConditions = Object.entries(filters).map(([key, value]) => [
-      key,
-      'Eq',
-      value
-    ]);
+    const filterConditions: [string, "Eq", string][] = Object.entries(filters)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, 'Eq', value as string]);
 
+    if (filterConditions.length === 0) {
+      return undefined;
+    }
     if (filterConditions.length === 1) {
       return filterConditions[0];
-    } else if (filterConditions.length > 1) {
+    } else {
       return ['And', filterConditions];
     }
-
-    return [];
   }
 }
 
