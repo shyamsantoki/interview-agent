@@ -409,7 +409,7 @@ const InterviewSearchFrontend: React.FC = () => {
                       <p
                         className="text-foreground leading-relaxed text-base"
                         dangerouslySetInnerHTML={{
-                          __html: highlightText(result.paragraph_text, query)
+                          __html: highlightText(result.paragraph_text.replace(/</g, '{').replace(/>/g, '}'), query)
                         }}
                       />
                     </div>
