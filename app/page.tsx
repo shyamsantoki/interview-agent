@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, Loader2, FileText, User, MessageSquare, Sparkles, Zap, Brain, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -12,6 +12,13 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 
 // Types
+interface Interview {
+  id: string;
+  participant_id?: string;
+  editedTranscript: string;
+  aiGeneratedDocument?: string;
+}
+
 interface SearchResult {
   id: string | number;
   score: number;
@@ -22,13 +29,22 @@ interface SearchResult {
   paragraph_text?: string;
   vector_score?: number;
   keyword_score?: number;
+  interview?: Interview;
 }
 
 type SearchType = 'hybrid' | 'vector' | 'keyword';
 
+interface SearchParams {
+  query: string;
+  searchType: SearchType;
+  topK: number;
+  alpha: number;
+  filters?: Record<string, unknown>;
+}
+
 // Search service abstraction
 class SearchService {
-  private static async makeRequest(endpoint: string, data: any) {
+  private static async makeRequest(endpoint: string, data: SearchParams) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -44,13 +60,7 @@ class SearchService {
     return response.json();
   }
 
-  static async search(params: {
-    query: string;
-    searchType: SearchType;
-    topK: number;
-    alpha: number;
-    filters?: Record<string, any>;
-  }) {
+  static async search(params: SearchParams): Promise<{ chunks: SearchResult[], interviews: Interview[] }> {
     return this.makeRequest('/api/search', params);
   }
 }
@@ -58,13 +68,11 @@ class SearchService {
 const InterviewSearchFrontend: React.FC = () => {
   const [query, setQuery] = useState('');
   const [chunks, setChunks] = useState<SearchResult[]>([]);
-  const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchType, setSearchType] = useState<SearchType>('hybrid');
   const [alpha, setAlpha] = useState([0.5]);
   const [topK, setTopK] = useState('10');
   const [error, setError] = useState<string | null>(null);
-  const [searchTime, setSearchTime] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,7 +84,6 @@ const InterviewSearchFrontend: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    const startTime = Date.now();
 
     try {
       const data = await SearchService.search({
@@ -87,14 +94,15 @@ const InterviewSearchFrontend: React.FC = () => {
         filters: {}
       });
 
-      setChunks(data.chunks || []);
-      setInterviews(data.interviews || []);
-      setSearchTime(Date.now() - startTime);
+      const chunksWithInterviews = (data.chunks || []).map((chunk) => ({
+        ...chunk,
+        interview: (data.interviews || []).find((iv) => iv.id === chunk.interview_id)
+      }));
+
+      setChunks(chunksWithInterviews);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setChunks([]);
-      setInterviews([]);
-      setSearchTime(null);
     } finally {
       setLoading(false);
     }
@@ -301,7 +309,7 @@ const InterviewSearchFrontend: React.FC = () => {
         )}
 
         {/* Interviews Section */}
-        {interviews.length > 0 && (
+        {/* {interviews.length > 0 && (
           <div className="mt-12">
             <h2 className="text-2xl font-bold mb-4">Interviews ({interviews.length})</h2>
             <div className="space-y-4">
@@ -331,7 +339,7 @@ const InterviewSearchFrontend: React.FC = () => {
               ))}
             </div>
           </div>
-        )}
+        )} */}
 
 
         {/* Results Header */}
@@ -363,6 +371,12 @@ const InterviewSearchFrontend: React.FC = () => {
                           <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
                             <User className="w-3 h-3" />
                             <span>Participant {result.participant_id}</span>
+                          </div>
+                        )}
+                        {result.interview_id && (
+                          <div className="flex items-center space-x-1 text-sm text-muted-foreground mt-1">
+                            <MessageSquare className="w-3 h-3" />
+                            <span>Interview {result.interview_id}</span>
                           </div>
                         )}
                       </div>
@@ -416,6 +430,15 @@ const InterviewSearchFrontend: React.FC = () => {
                   </div>
                 )}
 
+                {result.interview && (
+                  <div className="mt-4 pt-4 border-t border-dashed">
+                    <details className="text-sm space-y-2">
+                      <summary className="cursor-pointer text-blue-600">Transcript</summary>
+                      <pre className="whitespace-pre-wrap text-xs max-h-80 overflow-auto p-2 bg-muted rounded-md">{result.interview.editedTranscript}</pre>
+                    </details>
+                  </div>
+                )}
+
                 {/* Metadata Footer */}
                 <div className="flex items-center justify-between mt-6 pt-4 border-t">
                   <div className="flex items-center space-x-3 text-xs text-muted-foreground">
@@ -443,7 +466,7 @@ const InterviewSearchFrontend: React.FC = () => {
               </div>
               <h3 className="text-xl font-bold mb-2">No Results Found</h3>
               <p className="text-muted-foreground max-w-md mx-auto">
-                We couldn't find any interviews matching your search. Try adjusting your query or changing the search method.
+                We couldn&apos;t find any interviews matching your search. Try adjusting your query or changing the search method.
               </p>
             </CardContent>
           </Card>
