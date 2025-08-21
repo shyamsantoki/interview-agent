@@ -23,6 +23,7 @@ interface SearchResult {
   paragraph_text?: string;
   participant_id: string;
   score?: number;
+  id: string; // The citation ID, e.g., "interview_id.paragraph_index"
 }
 
 interface ToolCallResult {
@@ -69,48 +70,74 @@ interface StreamEvent {
   data: string | StreamEventData;
 }
 
-interface Interview {
-  id: string;
-  participant_id: string;
-  [key: string]: unknown;
-}
-
 interface InterviewDetail {
   id: string;
   participant_id: string;
   [key: string]: unknown;
+  highlightLines?: number[];
+  editedTranscript?: string;
+  aiGeneratedDocument?: string;
 }
 
 // Citation component
-const CitationLink: React.FC<{ interviewIds: string[]; onInterviewClick: (id: string) => void }> = ({
-  interviewIds,
-  onInterviewClick
+const CitationLink: React.FC<{
+  citationIds: string[];
+  onInterviewClick: (id: string) => void;
+  citationDetails: Record<string, SearchResult>;
+}> = ({
+  citationIds,
+  onInterviewClick,
+  citationDetails
 }) => {
-  return (
-    <span className="inline-flex items-center gap-1">
-      {interviewIds.map((id, index) => (
-        <React.Fragment key={id}>
-          {index > 0 && <span className="text-slate-400">,</span>}
-          <button
-            onClick={() => onInterviewClick(id)}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded text-xs font-medium text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
-            title={`View interview ${id}`}
-          >
-            <FileText className="h-3 w-3" />
-            <span>{id.slice(-6)}</span>
-          </button>
-        </React.Fragment>
-      ))}
-    </span>
-  );
-};
+    const [activeCitation, setActiveCitation] = useState<string | null>(null);
+
+    const formatParagraphText = (text: string | undefined) => {
+      if (!text) return 'No details available.';
+      return text.replace(/\{\{(\d+)\}\}/g, '<span class="bg-indigo-100 text-indigo-800 font-bold rounded px-1 py-0.5 text-xs">$1</span>');
+    };
+
+    return (
+      <span className="inline-flex items-center gap-1">
+        {citationIds.map((id, index) => (
+          <React.Fragment key={id}>
+            {index > 0 && <span className="text-slate-400">,</span>}
+            <div
+              className="relative inline-block"
+              onMouseEnter={() => setActiveCitation(id)}
+              onMouseLeave={() => setActiveCitation(null)}
+            >
+              <button
+                onClick={() => onInterviewClick(id)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded text-xs font-medium text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
+                title={`View citation from interview ${id.split('.')[0]}`}
+              >
+                <FileText className="h-3 w-3" />
+                <span>{id.split('.')[0].slice(-6)}</span>
+              </button>
+              {activeCitation === id && citationDetails[id] && (
+                <div className="absolute bottom-full mb-2 w-80 bg-white border border-slate-200 rounded-lg shadow-lg p-3 z-10 text-sm text-slate-800 leading-relaxed">
+                  <div
+                    dangerouslySetInnerHTML={{ __html: formatParagraphText(citationDetails[id].paragraph_text) }}
+                  />
+                  <div className="text-xs text-slate-500 mt-2">
+                    Source: {citationDetails[id].interview_title || `Interview ${citationDetails[id].interview_id}`}
+                  </div>
+                </div>
+              )}
+            </div>
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  };
 
 // Enhanced Markdown Component with Citation Parsing
 const MarkdownContent: React.FC<{
   content: string;
   isStreaming?: boolean;
   onInterviewClick: (id: string) => void;
-}> = ({ content, isStreaming = false, onInterviewClick }) => {
+  citationDetails: Record<string, SearchResult>;
+}> = ({ content, isStreaming = false, onInterviewClick, citationDetails }) => {
 
   // Parse citations and render them as clickable components
   const parseCitations = (text: string) => {
@@ -127,12 +154,13 @@ const MarkdownContent: React.FC<{
       }
 
       // Parse interview IDs
-      const interviewIds = match[1].split(',').map(id => id.trim());
+      const citationIds = match[1].split(',').map(id => id.trim());
       parts.push(
         <CitationLink
           key={`citation-${match.index}`}
-          interviewIds={interviewIds}
+          citationIds={citationIds}
           onInterviewClick={onInterviewClick}
+          citationDetails={citationDetails}
         />
       );
 
@@ -416,6 +444,21 @@ const InterviewPanel: React.FC<{
 }> = ({ interview, isLoading, onClose }) => {
   if (!interview && !isLoading) return null;
 
+  const formatInterviewText = (text: string, highlightLines?: number[]) => {
+    const lines = text.split('\n\n');
+    return lines.map((line, index) => {
+      const isHighlighted = highlightLines?.includes(index + 1);
+      return (
+        <p
+          key={index}
+          className={`transition-colors duration-300 ${isHighlighted ? 'bg-amber-100/80' : ''}`}
+        >
+          {index + 1}: {line}
+        </p>
+      );
+    });
+  };
+
   return (
     <div className="w-96 border-l border-slate-200 bg-white flex flex-col h-full">
       {/* Header */}
@@ -458,7 +501,7 @@ const InterviewPanel: React.FC<{
 
             {/* Display all other fields */}
             {Object.entries(interview)
-              .filter(([key]) => !['id', 'participant_id', '_id'].includes(key))
+              .filter(([key]) => !['id', 'participant_id', '_id', 'highlightLines'].includes(key))
               .map(([key, value]) => (
                 <div key={key}>
                   <div className="text-sm font-medium text-slate-600 mb-1 capitalize">
@@ -469,6 +512,10 @@ const InterviewPanel: React.FC<{
                       <pre className="whitespace-pre-wrap text-xs">
                         {JSON.stringify(value, null, 2)}
                       </pre>
+                    ) : key === 'editedTranscript' ? (
+                      <div className="whitespace-pre-wrap leading-relaxed space-y-3">
+                        {formatInterviewText(interview.editedTranscript as string, interview.highlightLines)}
+                      </div>
                     ) : (
                       <div className="whitespace-pre-wrap leading-relaxed">
                         {String(value)}
@@ -498,6 +545,7 @@ export const RAGChat: React.FC = () => {
   const [completedToolCalls, setCompletedToolCalls] = useState<ToolCall[]>([]);
   const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
   const [isLoadingInterview, setIsLoadingInterview] = useState(false);
+  const [citationDetails, setCitationDetails] = useState<Record<string, SearchResult>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -514,13 +562,13 @@ export const RAGChat: React.FC = () => {
   }, []);
 
   // Function to fetch interview details
-  const fetchInterviewDetails = async (interviewId: string) => {
+  const fetchInterviewDetails = async (interviewId: string, highlightLines?: number[]) => {
     setIsLoadingInterview(true);
     try {
       const response = await fetch(`/api/interviews?id=${encodeURIComponent(interviewId)}`);
       if (response.ok) {
         const data = await response.json();
-        setSelectedInterview(data.interview);
+        setSelectedInterview({ ...data.interview, highlightLines });
       } else {
         console.error('Failed to fetch interview:', response.statusText);
       }
@@ -531,8 +579,19 @@ export const RAGChat: React.FC = () => {
     }
   };
 
-  const handleInterviewClick = (interviewId: string) => {
-    fetchInterviewDetails(interviewId);
+  const handleInterviewClick = (citationId: string) => {
+    const interviewId = citationId.split('.')[0];
+    const details = citationDetails[citationId];
+    let highlightLines: number[] | undefined;
+
+    if (details && details.paragraph_text) {
+      const lineNumbers = details.paragraph_text.match(/\{\{(\d+)\}\}/g);
+      if (lineNumbers) {
+        highlightLines = lineNumbers.map(m => parseInt(m.replace(/\{|\}/g, '')));
+      }
+    }
+
+    fetchInterviewDetails(interviewId, highlightLines);
   };
 
   const handleCloseInterview = () => {
@@ -550,6 +609,7 @@ export const RAGChat: React.FC = () => {
     setStreamingMessage('');
     setCurrentToolCalls({});
     setCompletedToolCalls([]);
+    setCitationDetails({});
 
     try {
       const response = await fetch('/api/rag', {
@@ -630,6 +690,18 @@ export const RAGChat: React.FC = () => {
                     }
                   }));
 
+                  if (toolResultData.result?.results) {
+                    setCitationDetails(prev => {
+                      const newDetails: Record<string, SearchResult> = {};
+                      toolResultData.result!.results!.forEach(res => {
+                        if (res.id) {
+                          newDetails[res.id] = res;
+                        }
+                      });
+                      return { ...prev, ...newDetails };
+                    });
+                  }
+
                   setTimeout(() => {
                     setCurrentToolCalls(prev => {
                       const { [toolResultData.id]: completed, ...remaining } = prev;
@@ -701,6 +773,7 @@ export const RAGChat: React.FC = () => {
     setStreamingMessage('');
     setCurrentToolCalls({});
     setCompletedToolCalls([]);
+    setCitationDetails({});
     setSelectedInterview(null);
     inputRef.current?.focus();
   };
@@ -813,6 +886,7 @@ export const RAGChat: React.FC = () => {
                           <MarkdownContent
                             content={message.content}
                             onInterviewClick={handleInterviewClick}
+                            citationDetails={citationDetails}
                           />
                         </div>
                       )}
@@ -853,6 +927,7 @@ export const RAGChat: React.FC = () => {
                           content={streamingMessage}
                           isStreaming={true}
                           onInterviewClick={handleInterviewClick}
+                          citationDetails={citationDetails}
                         />
                       </div>
                     </div>

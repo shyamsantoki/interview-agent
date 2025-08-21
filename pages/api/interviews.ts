@@ -2,10 +2,12 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-interface Interview {
+export interface Interview {
   _id: string;
   id: string;
   participant_id: string;
+  editedTranscript: string;
+  aiGeneratedDocument: string;
   [key: string]: unknown;
 }
 
