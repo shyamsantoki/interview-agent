@@ -116,6 +116,186 @@ async function searchInterviews(params: SearchParams): Promise<string> {
   }
 }
 
+// Helper function to handle streaming with potential tool calls
+async function handleStreamWithToolCalls(
+  stream: AsyncIterable<Anthropic.Messages.MessageStreamEvent>,
+  res: NextApiResponse,
+  baseMessages: Anthropic.MessageParam[],
+  systemPrompt: string,
+  initialToolUseId?: string,
+  initialToolName?: string,
+  initialToolInput?: unknown,
+  initialToolResult?: string
+): Promise<void> {
+  const currentMessages = [...baseMessages];
+
+  // Add the initial tool use and result to the message history if provided
+  if (initialToolUseId && initialToolName && initialToolInput && initialToolResult) {
+    currentMessages.push(
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: initialToolUseId,
+            name: initialToolName,
+            input: initialToolInput,
+          },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: initialToolUseId,
+            content: initialToolResult,
+          },
+        ],
+      }
+    );
+  }
+
+  let toolUseId: string | null = null;
+  let toolName: string | null = null;
+  let toolInput: string = '';
+
+  for await (const chunk of stream) {
+    if (chunk.type === 'content_block_start') {
+      if (chunk.content_block.type === 'tool_use') {
+        toolUseId = chunk.content_block.id;
+        toolName = chunk.content_block.name;
+        toolInput = '';
+
+        writeStreamEvent(res, {
+          type: 'text',
+          data: '`TOOL CALL START`\n'
+        });
+
+        writeStreamEvent(res, {
+          type: 'tool_call',
+          data: {
+            status: 'start',
+            id: toolUseId,
+            name: toolName
+          }
+        });
+      }
+    } else if (chunk.type === 'content_block_delta') {
+      if (chunk.delta.type === 'text_delta') {
+        writeStreamEvent(res, {
+          type: 'text',
+          data: chunk.delta.text
+        });
+      } else if (chunk.delta.type === 'input_json_delta') {
+        toolInput += chunk.delta.partial_json;
+
+        const partial = tryParseJSON(toolInput);
+        if (partial) {
+          writeStreamEvent(res, {
+            type: 'tool_call',
+            data: {
+              status: 'input_update',
+              id: toolUseId,
+              name: toolName,
+              input: partial
+            }
+          });
+        }
+      }
+    } else if (chunk.type === 'content_block_stop') {
+      if (toolUseId && toolName === 'search_interviews') {
+        try {
+          const parsedInput = JSON.parse(toolInput);
+
+          writeStreamEvent(res, {
+            type: 'tool_call',
+            data: {
+              status: 'executing',
+              id: toolUseId,
+              name: toolName,
+              input: parsedInput
+            }
+          });
+
+          const toolResult = await searchInterviews(parsedInput);
+          const parsedResult = JSON.parse(toolResult);
+
+          writeStreamEvent(res, {
+            type: 'tool_result',
+            data: {
+              id: toolUseId,
+              name: toolName,
+              result: parsedResult,
+              summary: {
+                query: parsedResult.query,
+                searchType: parsedResult.searchType,
+                resultsCount: parsedResult.resultsCount,
+                hasError: !!parsedResult.error
+              }
+            }
+          });
+
+          // Add this tool use to the message history
+          currentMessages.push({
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: toolUseId,
+                name: toolName,
+                input: parsedInput,
+              },
+            ],
+          });
+
+          currentMessages.push({
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: toolUseId,
+                content: toolResult,
+              },
+            ],
+          });
+
+          // Create a new stream for the follow-up response
+          const followUpStream = await anthropic.messages.create({
+            model: 'claude-3-7-sonnet-20250219',
+            max_tokens: 4000,
+            system: systemPrompt,
+            tools: [searchTool],
+            messages: currentMessages,
+            stream: true,
+          });
+
+          // Recursively handle the new stream
+          await handleStreamWithToolCalls(followUpStream, res, currentMessages, systemPrompt);
+
+          // Reset tool state
+          toolUseId = null;
+          toolName = null;
+          toolInput = '';
+
+          return; // Exit after handling the recursive call
+        } catch (error) {
+          console.error('Tool execution error:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+          writeStreamEvent(res, {
+            type: 'error',
+            data: {
+              message: `Search execution failed: ${errorMessage}`,
+              id: toolUseId
+            }
+          });
+        }
+      }
+    }
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -142,11 +322,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 When answering questions:
 1. Use the search_interviews tool to find relevant context from the interview database
 2. Analyze the search results carefully and extract key insights
-3. Provide comprehensive answers based on the retrieved information
-4. Cite specific interviews and participants when relevant
-5. If the search doesn't return sufficient information, indicate this in your response
+3. If the initial search doesn't return sufficient information, you can make additional searches with different queries, search types, or filters
+4. Consider using different search strategies (vector, keyword, hybrid) or refining your search terms if needed
+5. Provide comprehensive answers based on all retrieved information
+6. Cite specific interviews and participants when relevant
+7. If after multiple searches you still don't have sufficient information, indicate this in your response
 
-Always be precise and reference specific interview content when making claims.`;
+Always be precise and reference specific interview content when making claims. You can perform multiple searches in a single conversation to gather comprehensive information.`;
 
     // Create the message stream with tool calling
     const stream = await anthropic.messages.create({
@@ -161,7 +343,6 @@ Always be precise and reference specific interview content when making claims.`;
     let toolUseId: string | null = null;
     let toolName: string | null = null;
     let toolInput: string = '';
-    let currentToolInput: unknown = null;
 
     for await (const chunk of stream) {
       if (chunk.type === 'message_start') {
@@ -201,7 +382,6 @@ Always be precise and reference specific interview content when making claims.`;
           // Try to parse partial JSON to show progress - but don't log errors
           const partial = tryParseJSON(toolInput);
           if (partial) {
-            currentToolInput = partial;
             writeStreamEvent(res, {
               type: 'tool_call',
               data: {
@@ -256,6 +436,7 @@ Always be precise and reference specific interview content when making claims.`;
               model: 'claude-3-7-sonnet-20250219',
               max_tokens: 4000,
               system: systemPrompt || defaultSystemPrompt,
+              tools: [searchTool],
               messages: [
                 ...messages,
                 {
@@ -283,15 +464,8 @@ Always be precise and reference specific interview content when making claims.`;
               stream: true,
             });
 
-            // Stream the follow-up response
-            for await (const followUpChunk of followUpStream) {
-              if (followUpChunk.type === 'content_block_delta' && followUpChunk.delta.type === 'text_delta') {
-                writeStreamEvent(res, {
-                  type: 'text',
-                  data: followUpChunk.delta.text
-                });
-              }
-            }
+            // Stream the follow-up response and handle additional tool calls
+            await handleStreamWithToolCalls(followUpStream, res, messages, systemPrompt, toolUseId, toolName, parsedInput, toolResult);
           } catch (error) {
             console.error('Tool execution error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
