@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap } from 'lucide-react';
+import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap, FileText, X, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -69,11 +69,84 @@ interface StreamEvent {
   data: string | StreamEventData;
 }
 
-// Markdown Component with Custom Styling
-const MarkdownContent: React.FC<{ content: string; isStreaming?: boolean }> = ({
-  content,
-  isStreaming = false
+interface Interview {
+  id: string;
+  participant_id: string;
+  [key: string]: unknown;
+}
+
+interface InterviewDetail {
+  id: string;
+  participant_id: string;
+  [key: string]: unknown;
+}
+
+// Citation component
+const CitationLink: React.FC<{ interviewIds: string[]; onInterviewClick: (id: string) => void }> = ({
+  interviewIds,
+  onInterviewClick
 }) => {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {interviewIds.map((id, index) => (
+        <React.Fragment key={id}>
+          {index > 0 && <span className="text-slate-400">,</span>}
+          <button
+            onClick={() => onInterviewClick(id)}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded text-xs font-medium text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
+            title={`View interview ${id}`}
+          >
+            <FileText className="h-3 w-3" />
+            <span>{id.slice(-6)}</span>
+          </button>
+        </React.Fragment>
+      ))}
+    </span>
+  );
+};
+
+// Enhanced Markdown Component with Citation Parsing
+const MarkdownContent: React.FC<{
+  content: string;
+  isStreaming?: boolean;
+  onInterviewClick: (id: string) => void;
+}> = ({ content, isStreaming = false, onInterviewClick }) => {
+
+  // Parse citations and render them as clickable components
+  const parseCitations = (text: string) => {
+    // Match citations in format {in:id1,id2,id3}
+    const citationRegex = /\{in:([^}]+)\}/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = citationRegex.exec(text)) !== null) {
+      // Add text before citation
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+
+      // Parse interview IDs
+      const interviewIds = match[1].split(',').map(id => id.trim());
+      parts.push(
+        <CitationLink
+          key={`citation-${match.index}`}
+          interviewIds={interviewIds}
+          onInterviewClick={onInterviewClick}
+        />
+      );
+
+      lastIndex = citationRegex.lastIndex;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts.length > 1 ? parts : text;
+  };
+
   return (
     <div className="markdown-content">
       <ReactMarkdown
@@ -101,12 +174,21 @@ const MarkdownContent: React.FC<{ content: string; isStreaming?: boolean }> = ({
             </h4>
           ),
 
-          // Paragraphs
-          p: ({ children }) => (
-            <p className="mb-3 text-slate-800 leading-relaxed last:mb-0">
-              {children}
-            </p>
-          ),
+          // Enhanced paragraphs with citation parsing
+          p: ({ children }) => {
+            const processedChildren = React.Children.map(children, (child) => {
+              if (typeof child === 'string') {
+                return parseCitations(child);
+              }
+              return child;
+            });
+
+            return (
+              <p className="mb-3 text-slate-800 leading-relaxed last:mb-0">
+                {processedChildren}
+              </p>
+            );
+          },
 
           // Lists
           ul: ({ children }) => (
@@ -119,12 +201,29 @@ const MarkdownContent: React.FC<{ content: string; isStreaming?: boolean }> = ({
               {children}
             </ol>
           ),
-          li: ({ children }) => (
-            <li className="text-slate-800 leading-relaxed ml-4 relative">
-              <span className="absolute -left-4 text-indigo-500">•</span>
-              {children}
-            </li>
-          ),
+          li: ({ children }) => {
+            const processedChildren = React.Children.map(children, (child) => {
+              if (typeof child === 'string') {
+                return parseCitations(child);
+              }
+              return child;
+            });
+
+            return (
+              <li className="text-slate-800 leading-relaxed ml-4 relative">
+                <span className="absolute -left-4 text-indigo-500">•</span>
+                {processedChildren}
+              </li>
+            );
+          },
+
+          // Enhanced text handling for inline citations
+          text: ({ children }) => {
+            if (typeof children === 'string') {
+              return <>{parseCitations(children)}</>;
+            }
+            return <>{children}</>;
+          },
 
           // Emphasis
           strong: ({ children }) => (
@@ -309,6 +408,87 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
   );
 };
 
+// Interview Detail Panel
+const InterviewPanel: React.FC<{
+  interview: InterviewDetail | null;
+  isLoading: boolean;
+  onClose: () => void;
+}> = ({ interview, isLoading, onClose }) => {
+  if (!interview && !isLoading) return null;
+
+  return (
+    <div className="w-96 border-l border-slate-200 bg-white flex flex-col h-full">
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-slate-600" />
+            <span className="font-medium text-slate-900">Interview Details</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-slate-200 rounded transition-colors"
+          >
+            <X className="h-4 w-4 text-slate-500" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+          </div>
+        ) : interview ? (
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm font-medium text-slate-600 mb-1">Interview ID</div>
+              <div className="text-sm text-slate-900 font-mono bg-slate-50 px-2 py-1 rounded">
+                {interview.id}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-medium text-slate-600 mb-1">Participant ID</div>
+              <div className="text-sm text-slate-900 font-mono bg-slate-50 px-2 py-1 rounded">
+                {interview.participant_id}
+              </div>
+            </div>
+
+            {/* Display all other fields */}
+            {Object.entries(interview)
+              .filter(([key]) => !['id', 'participant_id', '_id'].includes(key))
+              .map(([key, value]) => (
+                <div key={key}>
+                  <div className="text-sm font-medium text-slate-600 mb-1 capitalize">
+                    {key.replace(/_/g, ' ')}
+                  </div>
+                  <div className="text-sm text-slate-900 bg-slate-50 px-3 py-2 rounded max-h-96 overflow-y-auto">
+                    {typeof value === 'object' ? (
+                      <pre className="whitespace-pre-wrap text-xs">
+                        {JSON.stringify(value, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="whitespace-pre-wrap leading-relaxed">
+                        {String(value)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="text-center text-slate-500 mt-8">
+            <FileText className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+            <p>No interview selected</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const RAGChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -316,6 +496,8 @@ export const RAGChat: React.FC = () => {
   const [streamingMessage, setStreamingMessage] = useState('');
   const [currentToolCalls, setCurrentToolCalls] = useState<Record<string, ToolCall>>({});
   const [completedToolCalls, setCompletedToolCalls] = useState<ToolCall[]>([]);
+  const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
+  const [isLoadingInterview, setIsLoadingInterview] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -330,6 +512,32 @@ export const RAGChat: React.FC = () => {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Function to fetch interview details
+  const fetchInterviewDetails = async (interviewId: string) => {
+    setIsLoadingInterview(true);
+    try {
+      const response = await fetch(`/api/interviews?id=${encodeURIComponent(interviewId)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedInterview(data.interview);
+      } else {
+        console.error('Failed to fetch interview:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching interview:', error);
+    } finally {
+      setIsLoadingInterview(false);
+    }
+  };
+
+  const handleInterviewClick = (interviewId: string) => {
+    fetchInterviewDetails(interviewId);
+  };
+
+  const handleCloseInterview = () => {
+    setSelectedInterview(null);
+  };
 
   const sendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -387,7 +595,6 @@ export const RAGChat: React.FC = () => {
 
             try {
               const event: StreamEvent = JSON.parse(eventData);
-              console.log('Received SSE event:', event);
 
               switch (event.type) {
                 case 'text':
@@ -423,7 +630,6 @@ export const RAGChat: React.FC = () => {
                     }
                   }));
 
-                  // Move to completed tools after a delay
                   setTimeout(() => {
                     setCurrentToolCalls(prev => {
                       const { [toolResultData.id]: completed, ...remaining } = prev;
@@ -464,7 +670,6 @@ export const RAGChat: React.FC = () => {
         }
       }
 
-      // Add the complete assistant message to the conversation
       if (assistantMessage) {
         const assistantMsg: Message = { role: 'assistant', content: assistantMessage };
         setMessages(prev => [...prev, assistantMsg]);
@@ -496,6 +701,7 @@ export const RAGChat: React.FC = () => {
     setStreamingMessage('');
     setCurrentToolCalls({});
     setCompletedToolCalls([]);
+    setSelectedInterview(null);
     inputRef.current?.focus();
   };
 
@@ -506,195 +712,205 @@ export const RAGChat: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
-      {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200/60 bg-white/80 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
-                <Bot className="h-5 w-5 text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full flex items-center justify-center">
-                <Sparkles className="h-2.5 w-2.5 text-white" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900">Interview Assistant</h1>
-              <p className="text-sm text-slate-600">AI-powered research insights</p>
-            </div>
-          </div>
-
-          {messages.length > 0 && (
-            <button
-              onClick={clearChat}
-              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 rounded-lg transition-all duration-200"
-            >
-              New Chat
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Messages Container */}
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-4xl mx-auto h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto px-6 py-6">
-            {messages.length === 0 && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                  <MessageSquare className="h-8 w-8 text-white" />
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
+      {/* Main Chat Area */}
+      <div className="flex flex-col flex-1">
+        {/* Header */}
+        <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200/60 bg-white/80 backdrop-blur-sm">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm">
+                  <Bot className="h-5 w-5 text-white" />
                 </div>
-                <h2 className="text-2xl font-semibold text-slate-900 mb-2">
-                  Welcome to Interview Assistant
-                </h2>
-                <p className="text-slate-600 mb-8 max-w-md">
-                  Ask me anything about your interview data. I will search through conversations and provide detailed insights.
-                </p>
-
-                <div className="grid gap-3 w-full max-w-lg">
-                  <div className="text-sm font-medium text-slate-700 mb-2">Try asking:</div>
-                  {exampleQuestions.map((question, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setInputValue(question)}
-                      className="group p-4 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/60 rounded-xl text-left transition-all duration-200 hover:shadow-sm"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Zap className="h-4 w-4 text-indigo-500 group-hover:text-indigo-600 transition-colors" />
-                        <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">
-                          {question}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full flex items-center justify-center">
+                  <Sparkles className="h-2.5 w-2.5 text-white" />
                 </div>
               </div>
+              <div>
+                <h1 className="text-lg font-semibold text-slate-900">Interview Assistant</h1>
+                <p className="text-sm text-slate-600">AI-powered research insights</p>
+              </div>
+            </div>
+
+            {messages.length > 0 && (
+              <button
+                onClick={clearChat}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 rounded-lg transition-all duration-200"
+              >
+                New Chat
+              </button>
             )}
+          </div>
+        </div>
 
-            <div className="space-y-6">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                >
-                  <div className="flex-shrink-0">
-                    {message.role === 'assistant' ? (
+        {/* Messages Container */}
+        <div className="flex-1 overflow-hidden">
+          <div className="max-w-4xl mx-auto h-full flex flex-col">
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              {messages.length === 0 && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                    <MessageSquare className="h-8 w-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-semibold text-slate-900 mb-2">
+                    Welcome to Interview Assistant
+                  </h2>
+                  <p className="text-slate-600 mb-8 max-w-md">
+                    Ask me anything about your interview data. I will search through conversations and provide detailed insights.
+                  </p>
+
+                  <div className="grid gap-3 w-full max-w-lg">
+                    <div className="text-sm font-medium text-slate-700 mb-2">Try asking:</div>
+                    {exampleQuestions.map((question, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setInputValue(question)}
+                        className="group p-4 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/60 rounded-xl text-left transition-all duration-200 hover:shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Zap className="h-4 w-4 text-indigo-500 group-hover:text-indigo-600 transition-colors" />
+                          <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">
+                            {question}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                  >
+                    <div className="flex-shrink-0">
+                      {message.role === 'assistant' ? (
+                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-white" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center">
+                          <User className="h-4 w-4 text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      className={`max-w-3xl ${message.role === 'user'
+                        ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                        : 'bg-white border border-slate-200/60'
+                        } rounded-2xl px-5 py-4 shadow-sm`}
+                    >
+                      {message.role === 'user' ? (
+                        <div className="text-sm leading-relaxed text-white">
+                          {message.content}
+                        </div>
+                      ) : (
+                        <div className="text-sm leading-relaxed">
+                          <MarkdownContent
+                            content={message.content}
+                            onInterviewClick={handleInterviewClick}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Tool Calls */}
+                {(Object.keys(currentToolCalls).length > 0 || completedToolCalls.length > 0) && (
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0">
                       <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
                         <Bot className="h-4 w-4 text-white" />
                       </div>
-                    ) : (
-                      <div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center">
-                        <User className="h-4 w-4 text-white" />
-                      </div>
-                    )}
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      {Object.values(currentToolCalls).map((toolCall) => (
+                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                      ))}
+                      {completedToolCalls.map((toolCall) => (
+                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                      ))}
+                    </div>
                   </div>
+                )}
 
-                  <div
-                    className={`max-w-3xl ${message.role === 'user'
-                      ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
-                      : 'bg-white border border-slate-200/60'
-                      } rounded-2xl px-5 py-4 shadow-sm`}
-                  >
-                    {message.role === 'user' ? (
-                      <div className="text-sm leading-relaxed text-white">
-                        {message.content}
+                {/* Streaming Message */}
+                {streamingMessage && (
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-white" />
                       </div>
-                    ) : (
+                    </div>
+                    <div className="max-w-3xl bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
                       <div className="text-sm leading-relaxed">
-                        <MarkdownContent content={message.content} />
+                        <MarkdownContent
+                          content={streamingMessage}
+                          isStreaming={true}
+                          onInterviewClick={handleInterviewClick}
+                        />
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )}
 
-              {/* Tool Calls */}
-              {(Object.keys(currentToolCalls).length > 0 || completedToolCalls.length > 0) && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <Bot className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-3">
-                    {Object.values(currentToolCalls).map((toolCall) => (
-                      <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                    ))}
-                    {completedToolCalls.map((toolCall) => (
-                      <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Streaming Message */}
-              {streamingMessage && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <Bot className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-                  <div className="max-w-3xl bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
-                    <div className="text-sm leading-relaxed">
-                      <MarkdownContent content={streamingMessage} isStreaming={true} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Loading */}
-              {isLoading && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <Loader2 className="h-4 w-4 text-white animate-spin" />
-                    </div>
-                  </div>
-                  <div className="bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
-                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75" />
-                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150" />
+                {/* Loading */}
+                {isLoading && !streamingMessage && Object.keys(currentToolCalls).length === 0 && (
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                        <Loader2 className="h-4 w-4 text-white animate-spin" />
                       </div>
-                      <span className="text-sm text-slate-600">Thinking...</span>
+                    </div>
+                    <div className="bg-white border border-slate-200/60 rounded-2xl px-5 py-4 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75" />
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150" />
+                        </div>
+                        <span className="text-sm text-slate-600">Thinking...</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              <div ref={messagesEndRef} />
             </div>
 
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div className="flex-shrink-0 px-6 py-4 bg-white/80 backdrop-blur-sm border-t border-slate-200/60">
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <div className="relative">
-                  <input
-                    ref={inputRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ask about the interview data..."
-                    disabled={isLoading}
-                    className="w-full px-4 py-3 pr-12 bg-white border border-slate-200/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-200 text-sm placeholder-slate-500 disabled:bg-slate-50 disabled:text-slate-500"
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <button
-                      onClick={sendMessage}
-                      disabled={!inputValue.trim() || isLoading}
-                      className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 rounded-lg flex items-center justify-center transition-all duration-200 shadow-sm disabled:shadow-none group"
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 text-white animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
-                      )}
-                    </button>
+            {/* Input Area */}
+            <div className="flex-shrink-0 px-6 py-4 bg-white/80 backdrop-blur-sm border-t border-slate-200/60">
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <div className="relative">
+                    <input
+                      ref={inputRef}
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder="Ask about the interview data..."
+                      disabled={isLoading}
+                      className="w-full px-4 py-3 pr-12 bg-white border border-slate-200/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-200 text-sm placeholder-slate-500 disabled:bg-slate-50 disabled:text-slate-500"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <button
+                        onClick={sendMessage}
+                        disabled={!inputValue.trim() || isLoading}
+                        className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 rounded-lg flex items-center justify-center transition-all duration-200 shadow-sm disabled:shadow-none group"
+                      >
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 text-white animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -702,7 +918,15 @@ export const RAGChat: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Interview Panel */}
+      {(selectedInterview || isLoadingInterview) && (
+        <InterviewPanel
+          interview={selectedInterview}
+          isLoading={isLoadingInterview}
+          onClose={handleCloseInterview}
+        />
+      )}
     </div>
   );
 };
-

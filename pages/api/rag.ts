@@ -96,9 +96,8 @@ async function searchInterviews(params: SearchParams): Promise<string> {
     const formattedResults = results?.map((result, index) => ({
       rank: index + 1,
       score: result.score,
+      id: result.id,
       interview_id: result.interview_id,
-      participant_id: result.participant_id,
-      interview_title: result.interview_title,
       paragraph_title: result.paragraph_title,
       paragraph_text: result.paragraph_text,
     })) || [];
@@ -325,8 +324,15 @@ When answering questions:
 3. If the initial search doesn't return sufficient information, you can make additional searches with different queries, search types, or filters
 4. Consider using different search strategies (vector, keyword, hybrid) or refining your search terms if needed
 5. Provide comprehensive answers based on all retrieved information
-6. Cite specific interviews and participants when relevant
-7. If after multiple searches you still don't have sufficient information, indicate this in your response
+6. **CRITICAL: ALWAYS cite interviews using the format {in:<interview_id>} whenever you reference information from search results**
+7. Every claim or insight you make must include proper citations in the {in:<interview_id>} format
+8. If after multiple searches you still don't have sufficient information, indicate this in your response
+
+Citation Requirements:
+- Use {in:<interview_id>} format for every interview reference
+- Place citations immediately after the relevant statement or claim
+- Multiple interviews can be cited like {in:interview1,interview2}
+- Citations are MANDATORY - never provide information without proper attribution
 
 Always be precise and reference specific interview content when making claims. You can perform multiple searches in a single conversation to gather comprehensive information.`;
 
