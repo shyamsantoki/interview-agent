@@ -1,9 +1,15 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap, FileText, X, ExternalLink } from 'lucide-react';
+import { Send, Loader2, Bot, User, Sparkles, Search, Eye, CheckCircle, XCircle, Clock, MessageSquare, Zap, FileText, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Message {
   role: 'user' | 'assistant';
@@ -89,45 +95,43 @@ const CitationLink: React.FC<{
   onInterviewClick,
   citationDetails
 }) => {
-    const [activeCitation, setActiveCitation] = useState<string | null>(null);
-
     const formatParagraphText = (text: string | undefined) => {
       if (!text) return 'No details available.';
-      return text.replace(/\{\{(\d+)\}\}/g, '<span class="bg-indigo-100 text-indigo-800 font-bold rounded px-1 py-0.5 text-xs">$1</span>');
+      return text.replace(/\{\{(\d+)\}\}/g, '<span class="bg-indigo-100 text-indigo-800 font-bold rounded mx-1 px-1 py-0.5 text-xs">$1</span>');
     };
 
     return (
-      <span className="inline-flex items-center gap-1">
-        {citationIds.map((id, index) => (
-          <React.Fragment key={id}>
-            {index > 0 && <span className="text-slate-400">,</span>}
-            <div
-              className="relative inline-block"
-              onMouseEnter={() => setActiveCitation(id)}
-              onMouseLeave={() => setActiveCitation(null)}
-            >
-              <button
-                onClick={() => onInterviewClick(id)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded text-xs font-medium text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
-                title={`View citation from interview ${id.split('.')[0]}`}
-              >
-                <FileText className="h-3 w-3" />
-                <span>{id.split('.')[0].slice(-6)}</span>
-              </button>
-              {activeCitation === id && citationDetails[id] && (
-                <div className="absolute bottom-full mb-2 w-80 bg-white border border-slate-200 rounded-lg shadow-lg p-3 z-10 text-sm text-slate-800 leading-relaxed">
-                  <div
-                    dangerouslySetInnerHTML={{ __html: formatParagraphText(citationDetails[id].paragraph_text) }}
-                  />
-                  <div className="text-xs text-slate-500 mt-2">
-                    Source: {citationDetails[id].interview_title || `Interview ${citationDetails[id].interview_id}`}
-                  </div>
-                </div>
-              )}
-            </div>
-          </React.Fragment>
-        ))}
-      </span>
+      <TooltipProvider>
+        <span className="inline-flex items-center gap-1">
+          {citationIds.map((id, index) => (
+            <React.Fragment key={id}>
+              {index > 0 && <span className="text-slate-400">,</span>}
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onInterviewClick(id)}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded text-xs font-medium text-indigo-700 hover:text-indigo-800 transition-colors cursor-pointer"
+                    title={`View citation from interview ${id.split('.')[0]}`}
+                  >
+                    <FileText className="h-3 w-3" />
+                    <span>{id.split('.')[0].slice(-6)}</span>
+                  </button>
+                </TooltipTrigger>
+                {citationDetails[id] && (
+                  <TooltipContent className="w-80 rounded-lg shadow-lg p-3 text-sm leading-relaxed">
+                    <div
+                      dangerouslySetInnerHTML={{ __html: formatParagraphText(citationDetails[id].paragraph_text) }}
+                    />
+                    <div className="text-xs text-slate-500 mt-2 ">
+                      Source: {citationDetails[id].interview_title || `Interview ${citationDetails[id].interview_id}`}
+                    </div>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </React.Fragment>
+          ))}
+        </span>
+      </TooltipProvider>
     );
   };
 
