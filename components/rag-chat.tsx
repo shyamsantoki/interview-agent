@@ -184,28 +184,6 @@ const MarkdownContent: React.FC<{
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Headers
-          h1: ({ children }) => (
-            <h1 className="text-xl font-bold mt-6 mb-4 text-slate-900 first:mt-0">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-lg font-bold mt-5 mb-3 text-slate-800 first:mt-0">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-base font-semibold mt-4 mb-2 text-slate-700 first:mt-0">
-              {children}
-            </h3>
-          ),
-          h4: ({ children }) => (
-            <h4 className="text-sm font-semibold mt-3 mb-2 text-slate-700 first:mt-0">
-              {children}
-            </h4>
-          ),
-
           // Enhanced paragraphs with citation parsing
           p: ({ children }) => {
             const processedChildren = React.Children.map(children, (child) => {
@@ -216,48 +194,163 @@ const MarkdownContent: React.FC<{
             });
 
             return (
-              <p className="mb-3 text-slate-800 leading-relaxed last:mb-0">
+              <p className="mb-4 text-slate-800 leading-relaxed last:mb-0">
                 {processedChildren}
               </p>
             );
           },
 
-          // Lists
+          // Headings with proper hierarchy and spacing
+          h1: ({ children }) => (
+            <h1 className="text-3xl font-bold text-slate-900 mb-6 mt-8 first:mt-0 border-b border-slate-200 pb-2">
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-2xl font-semibold text-slate-900 mb-4 mt-6 first:mt-0">
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-xl font-semibold text-slate-800 mb-3 mt-5 first:mt-0">
+              {children}
+            </h3>
+          ),
+          h4: ({ children }) => (
+            <h4 className="text-lg font-medium text-slate-800 mb-2 mt-4 first:mt-0">
+              {children}
+            </h4>
+          ),
+          h5: ({ children }) => (
+            <h5 className="text-base font-medium text-slate-700 mb-2 mt-3 first:mt-0">
+              {children}
+            </h5>
+          ),
+          h6: ({ children }) => (
+            <h6 className="text-sm font-medium text-slate-600 mb-2 mt-2 first:mt-0 uppercase tracking-wide">
+              {children}
+            </h6>
+          ),
+
+          // Lists with proper spacing and styling
           ul: ({ children }) => (
-            <ul className="mb-3 space-y-1 last:mb-0">
+            <ul className="mb-4 ml-6 space-y-1 list-disc marker:text-slate-400">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="mb-3 space-y-1 list-decimal list-inside last:mb-0">
+            <ol className="mb-4 ml-6 space-y-1 list-decimal marker:text-slate-500 marker:font-medium">
               {children}
             </ol>
           ),
-          li: ({ children }) => {
-            const processedChildren = React.Children.map(children, (child) => {
-              if (typeof child === 'string') {
-                return parseCitations(child);
-              }
-              return child;
-            });
+          li: ({ children }) => (
+            <li className="text-slate-800 leading-relaxed pl-1">
+              {children}
+            </li>
+          ),
+
+          // Code blocks and inline code
+          code: ({ className, children, ...props }) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const language = match ? match[1] : '';
 
             return (
-              <li className="text-slate-800 leading-relaxed ml-4 relative">
-                <span className="absolute -left-4 text-indigo-500">•</span>
-                {processedChildren}
-              </li>
+              <div className="mb-4 rounded-lg border border-slate-200 overflow-hidden">
+                {language && (
+                  <div className="bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600 border-b border-slate-200">
+                    {language}
+                  </div>
+                )}
+                <pre className="bg-slate-900 text-slate-100 p-4 overflow-x-auto">
+                  <code className="font-mono text-sm" {...props}>
+                    {children}
+                  </code>
+                </pre>
+              </div>
             );
           },
 
-          // Enhanced text handling for inline citations
-          text: ({ children }) => {
-            if (typeof children === 'string') {
-              return <>{parseCitations(children)}</>;
-            }
-            return <>{children}</>;
-          },
+          // Blockquotes
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-slate-300 pl-4 py-2 mb-4 bg-slate-50 text-slate-700 italic">
+              {children}
+            </blockquote>
+          ),
 
-          // Emphasis
+          // Links with hover effects
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              className="text-blue-600 hover:text-blue-800 underline underline-offset-2 hover:underline-offset-4 transition-all duration-200"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          ),
+
+          // Images with responsive styling
+          img: ({ src, alt }) => (
+            <div className="mb-4">
+              <img
+                src={src}
+                alt={alt}
+                className="max-w-full h-auto rounded-lg shadow-sm border border-slate-200"
+              />
+              {alt && (
+                <figcaption className="text-sm text-slate-600 mt-2 text-center italic">
+                  {alt}
+                </figcaption>
+              )}
+            </div>
+          ),
+
+          // Tables with full styling
+          table: ({ children }) => (
+            <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-slate-50">
+              {children}
+            </thead>
+          ),
+          tbody: ({ children }) => (
+            <tbody className="bg-white divide-y divide-slate-200">
+              {children}
+            </tbody>
+          ),
+          tr: ({ children }) => (
+            <tr className="hover:bg-slate-50 transition-colors">
+              {children}
+            </tr>
+          ),
+          th: ({ children, style }) => (
+            <th
+              className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider"
+              style={style}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children, style }) => (
+            <td
+              className="px-4 py-3 text-sm text-slate-800 whitespace-nowrap"
+              style={style}
+            >
+              {children}
+            </td>
+          ),
+
+          // Horizontal rule
+          hr: () => (
+            <hr className="my-6 border-0 border-t border-slate-200" />
+          ),
+
+          // Strong and emphasis
           strong: ({ children }) => (
             <strong className="font-semibold text-slate-900">
               {children}
@@ -269,62 +362,64 @@ const MarkdownContent: React.FC<{
             </em>
           ),
 
-          // Blockquotes
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-3 border-indigo-300 pl-4 py-2 my-3 bg-indigo-50/50 italic text-slate-700">
+          // Strikethrough
+          del: ({ children }) => (
+            <del className="line-through text-slate-500">
               {children}
-            </blockquote>
+            </del>
           ),
 
-          // Tables
-          table: ({ children }) => (
-            <div className="overflow-x-auto my-3">
-              <table className="min-w-full border border-slate-200 rounded-lg">
-                {children}
-              </table>
-            </div>
-          ),
-          thead: ({ children }) => (
-            <thead className="bg-slate-50">
+          // Task lists (checkboxes)
+          input: ({ type, checked, disabled }) => {
+            if (type === 'checkbox') {
+              return (
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  className="mr-2 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                />
+              );
+            }
+            return null;
+          },
+
+          // Definition lists
+          dl: ({ children }) => (
+            <dl className="mb-4 space-y-2">
               {children}
-            </thead>
+            </dl>
           ),
-          tbody: ({ children }) => (
-            <tbody className="bg-white">
+          dt: ({ children }) => (
+            <dt className="font-semibold text-slate-900">
               {children}
-            </tbody>
+            </dt>
           ),
-          tr: ({ children }) => (
-            <tr className="border-b border-slate-200 last:border-b-0">
+          dd: ({ children }) => (
+            <dd className="ml-4 text-slate-700">
               {children}
-            </tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-3 py-2 text-left text-sm font-semibold text-slate-900 border-r border-slate-200 last:border-r-0">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-3 py-2 text-sm text-slate-800 border-r border-slate-200 last:border-r-0">
-              {children}
-            </td>
+            </dd>
           ),
 
-          // Links
-          a: ({ children, href }) => (
-            <a
-              href={href}
-              className="text-indigo-600 hover:text-indigo-800 underline underline-offset-2 hover:underline-offset-4 transition-all duration-200"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+          // Footnotes (if using remark-footnotes)
+          sup: ({ children }) => (
+            <sup className="text-xs text-blue-600 hover:text-blue-800">
               {children}
-            </a>
+            </sup>
           ),
 
-          // Horizontal Rule
-          hr: () => (
-            <hr className="my-4 border-t border-slate-200" />
+          // Mark (highlight)
+          mark: ({ children }) => (
+            <mark className="bg-yellow-200 px-1 py-0.5 rounded">
+              {children}
+            </mark>
+          ),
+
+          // Subscript and superscript
+          sub: ({ children }) => (
+            <sub className="text-xs">
+              {children}
+            </sub>
           ),
         }}
       >

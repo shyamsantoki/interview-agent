@@ -168,7 +168,7 @@ async function handleStreamWithToolCalls(
 
         writeStreamEvent(res, {
           type: 'text',
-          data: '`TOOL CALL START`\n'
+          data: '\n'
         });
 
         writeStreamEvent(res, {
@@ -369,7 +369,7 @@ Always be precise and reference specific interview content when making claims. Y
           // Send tool call start event
           writeStreamEvent(res, {
             type: 'text',
-            data: '`TOOL CALL START`\n'
+            data: '\n'
           });
 
           writeStreamEvent(res, {
