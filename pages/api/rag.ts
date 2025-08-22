@@ -340,6 +340,8 @@ Output format:
 ❌ WRONG: "Many participants mentioned efficiency concerns." (No citation)
 ❌ WRONG: "Based on the interviews, users want better functionality." (No specific citation)
 
+**THE OUTPUT WITHOUT PROPER CITATIONS WILL BE CONSIDERED INCOMPLETE AND UNACCEPTABLE!**
+
 
 Always be precise and reference specific interview content when making claims. You can perform multiple searches in a single conversation to gather comprehensive information.`;
 
