@@ -303,6 +303,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { messages, systemPrompt } = req.body;
 
+    // Enforce citation requirement in the last user message
+    messages[messages.length - 1].content += '\n\nPlease ensure all responses cite interviews using the {in:<chunk ID with dot>} format.';
+
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Messages array is required' });
     }
@@ -324,19 +327,19 @@ When answering questions:
 3. If the initial search doesn't return sufficient information, you can make additional searches with different queries, search types, or filters
 4. Consider using different search strategies (vector, keyword, hybrid) or refining your search terms if needed
 5. Provide comprehensive answers based on all retrieved information
-6. **CRITICAL: ALWAYS cite interviews using the format {in:<chunk ID; stored in "id">} whenever you reference information from search results**
-7. Every claim or insight you make must include proper citations in the {in:<chunk ID; stored in "id">} format
+6. **CRITICAL: ALWAYS cite interviews using the format {in:<chunk ID with dot; stored in "id">} whenever you reference information from search results**
+7. Every claim or insight you make must include proper citations in the {in:<chunk ID with dot; stored in "id">} format
 8. If after multiple searches you still don't have sufficient information, indicate this in your response
 
 Citation Requirements:
-- Use {in:<chunk ID; stored in "id">} format for every interview reference
+- Use {in:<chunk ID with dot; stored in "id">} format for every interview reference
 - Place citations immediately after the relevant statement or claim
 - Multiple interviews can be cited like {in:interview1,interview2}
 - Citations are MANDATORY - never provide information without proper attribution
 
 Output format:
-✅ CORRECT: "Participants expressed frustration with the current system {in:interview_047}."
-✅ CORRECT: "The main themes were efficiency and user experience {in:interview_012,interview_034}."
+✅ CORRECT: "Participants expressed frustration with the current system {in:interview_047.0}."
+✅ CORRECT: "The main themes were efficiency and user experience {in:interview_012.1,interview_034.2}."
 ❌ WRONG: "Many participants mentioned efficiency concerns." (No citation)
 ❌ WRONG: "Based on the interviews, users want better functionality." (No specific citation)
 
